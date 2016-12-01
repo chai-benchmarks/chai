@@ -409,5 +409,5 @@ int main(int argc, char **argv) {
     timer.print("Deallocation", 1);
 
     printf("Test Passed\n");
-    return 1;
+    return 0;
 }
