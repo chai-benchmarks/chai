@@ -1,0 +1,14 @@
+
+Histogram - output partition (HSTO)
+
+Compilation instructions:
+
+    make
+
+Execution instructions
+
+    ./hsto
+
+For more options:
+
+    ./hsto -h

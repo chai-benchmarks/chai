@@ -1,0 +1,22 @@
+
+Canny Edge Detection - task partitioning (CEDT)
+
+Compilation instructions:
+
+    make
+
+Execution instructions
+
+    ./cedt
+
+For more options:
+
+    ./cedt -h
+
+
+Acknowledgements:
+Sean Kelley (https://github.com/smskelley/canny-opencl)
+
+Read more:
+J. Canny, “A computational approach to edge detection,” Pattern Analysis and 
+Machine Intelligence, IEEE Transactions on, no. 6, pp. 679–698, 1986.

@@ -1,0 +1,20 @@
+
+RANSAC - task partitioning (RSCT)
+
+Compilation instructions:
+
+    make
+
+Execution instructions
+
+    ./rsct
+
+For more options:
+
+    ./rsct -h
+
+
+Read more:
+M. A. Fischler and R. C. Bolles, “Random sample consensus: a paradigm for model 
+fitting with applications to image analysis and automated cartography,” 
+Communications of the ACM, vol. 24, pp. 381–395, June 1981.

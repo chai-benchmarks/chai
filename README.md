@@ -1,10 +1,8 @@
 # chai-benchmarks
-This is Chai benchmark suite for Integrated-Architectures.
-The current version of Chai is 1.0-Alpha. 
-This repository currently includes OpenCL 1.2, and OpenCL 2.0 versions.
+This is the Chai benchmark suite, a suite of Collaborative Heterogeneous Applications for Integrated-architectures. This repository currently includes OpenCL 1.2 and OpenCL 2.0 implementations of each benchmark.
 
-The OpenCL 2.0 uses some HSA features, while OpenCL 1.2 should be applicable for most OpenCL 1.2 stacks.
+The current version of Chai is 1.0-alpha.
 
 #
 
-If you think the work is useful, please cite us (https://github.com/chai-benchmarks/chai/).
+If you think this work is useful, please cite us at https://github.com/chai-benchmarks/chai for now, until we provide another reference.
