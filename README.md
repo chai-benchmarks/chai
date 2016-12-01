@@ -9,5 +9,5 @@ The OpenCL 2.0 uses some HSA features, while OpenCL 1.2 should be applicable for
 
 If you think the work is useful, please cite us.
 The paper is currently under review.
-Please, temporarily cite this repo (https://bitbucket.org/gomezlun/chai),
+Please, temporarily cite this repo (https://github.com/chai-benchmarks/chai-benchmarks/),
 and replace it later with the bibtex we will provide soon.
