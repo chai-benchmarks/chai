@@ -32,7 +32,13 @@
 #  THE SOFTWARE.
 # 
 
-CXX=g++
+ifndef CXX
+    CXX=g++
+else
+    ifeq ($(CXX),c++)
+    CXX=g++
+    endif
+endif
 CXX_FLAGS=-std=c++11
 
 ifndef CHAI_OCL_LIB
@@ -40,17 +46,34 @@ ifndef CHAI_OCL_LIB
 endif
 LIB=-L/usr/lib/ -L$(CHAI_OCL_LIB) -lOpenCL -lm 
 
+is_pthreads=$(shell ${CXX} -v 2> /dev/stdout | grep "Thread model" | awk {'print $$3'})
+ifeq ($(is_pthreads),posix)
+    LIB+=-pthread
+endif
+
 ifndef CHAI_OCL_INC
     $(error CHAI_OCL_INC not defined. This environment variable must be defined to point to the location of the OpenCL header files)
 endif
 INC=-I$(CHAI_OCL_INC)
 
-DEP=kernel.cpp kernel.h main.cpp support/common.h support/ocl.h support/partitioner.h support/timer.h support/verify.h
 SRC=main.cpp kernel.cpp
+OBJECTS=$(SRC:.cpp=.o)
+DEPS=$(OBJECTS:.o=.d)
 EXE=bs
 
-all:
-	$(CXX) $(CXX_FLAGS) $(SRC) $(LIB) $(INC) -o $(EXE)
+.PHONY: all
+all: $(EXE)
+
+%.o: %.cpp
+	$(CXX) $(CXX_FLAGS) $(INC) -c -MMD -o $@ $<
+
+%.d: ;
+.PRECIOUS: %.d
+
+$(EXE): $(OBJECTS)
+	$(CXX) $(CXX_FLAGS) $(OBJECTS) $(LIB) -o $(EXE)
 
 clean:
-	rm -f $(EXE)
+	rm -f $(EXE) *.o *.d
+
+-include $(DEPS)
