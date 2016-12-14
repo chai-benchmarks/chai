@@ -7,7 +7,7 @@ The current version of Chai is 1.0-alpha.
 
 If you think this work is useful, please cite us at https://github.com/chai-benchmarks/chai for now, until we provide another reference.
 
-## Running with Docker
+## Running OpenCL 1.2 benchmarks on NVIDIA with Docker
 
 Install `docker` for your system.
 
