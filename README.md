@@ -13,5 +13,10 @@ Install `docker` for your system.
 
 Install `nvidia-docker`.
 
+To build the docker image, use
+
     nvidia-docker build . -t chai
+
+To run a benchmark (for example, BS), do
+
     nvidia-docker run -it chai bash -c "cd chai/OpenCL1.2/BS/ && ./bs"
