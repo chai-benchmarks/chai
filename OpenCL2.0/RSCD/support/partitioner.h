@@ -38,29 +38,63 @@
 
 #ifndef _OPENCL_COMPILER_
 #include <iostream>
-#ifdef OCL_2_0
-#include <atomic>
-#endif
 #endif
 
-#define STATIC_PARTITIONING 0
-#define DYNAMIC_PARTITIONING 1
+#if !defined(_OPENCL_COMPILER_) && defined(OCL_2_0)
+#include <atomic>
+#endif
+
+// Partitioner definition -----------------------------------------------------
 
 typedef struct Partitioner {
 
     int n_tasks;
     int cut;
+    int current;
+#ifndef _OPENCL_COMPILER_
+    int thread_id;
+    int n_threads;
+#endif
+
+
 #ifdef OCL_2_0
+    // OpenCL 2.0 support for dynamic partitioning
     int strategy;
+#ifdef _OPENCL_COMPILER_
+    __global atomic_int *worklist;
+    __local int *tmp;
+#else
+    std::atomic_int *worklist;
+#endif
 #endif
 
 } Partitioner;
 
-#ifndef _OPENCL_COMPILER_
+// Partitioning strategies
+#define STATIC_PARTITIONING 0
+#define DYNAMIC_PARTITIONING 1
 
-inline Partitioner partitioner_create(int n_tasks, float alpha) {
+// Create a partitioner -------------------------------------------------------
+
+inline Partitioner partitioner_create(int n_tasks, float alpha
+#ifndef _OPENCL_COMPILER_
+    , int thread_id, int n_threads
+#endif
+#ifdef OCL_2_0
+#ifdef _OPENCL_COMPILER_
+    , __global atomic_int *worklist
+    , __local int *tmp
+#else
+    , std::atomic_int *worklist
+#endif
+#endif
+    ) {
     Partitioner p;
     p.n_tasks = n_tasks;
+#ifndef _OPENCL_COMPILER_
+    p.thread_id = thread_id;
+    p.n_threads = n_threads;
+#endif
     if(alpha >= 0.0 && alpha <= 1.0) {
         p.cut = p.n_tasks * alpha;
 #ifdef OCL_2_0
@@ -69,97 +103,109 @@ inline Partitioner partitioner_create(int n_tasks, float alpha) {
     } else {
 #ifdef OCL_2_0
         p.strategy = DYNAMIC_PARTITIONING;
-#else
-        std::cerr << "Illegal value! Alpha must be between 0 and 1!" << std::endl;
-        exit(-1);
+        p.worklist = worklist;
+#ifdef _OPENCL_COMPILER_
+        p.tmp = tmp;
+#endif
 #endif
     }
     return p;
 }
 
-inline int cpu_first(const Partitioner *p, int id
-#ifdef OCL_2_0
-    ,
-    std::atomic_int *worklist) {
-    if(p->strategy == DYNAMIC_PARTITIONING) {
-        return worklist->fetch_add(1);
-    } else
-#else
-    ) {
-#endif
-    {
-        return id;
-    }
-}
+// Partitioner iterators: first() ---------------------------------------------
 
-inline int cpu_next(const Partitioner *p, int old, int numCPUThreads
-#ifdef OCL_2_0
-    ,
-    std::atomic_int *worklist) {
-    if(p->strategy == DYNAMIC_PARTITIONING) {
-        return worklist->fetch_add(1);
-    } else
-#else
-    ) {
-#endif
-    {
-        return old + numCPUThreads;
-    }
-}
+#ifndef _OPENCL_COMPILER_
 
-inline bool cpu_more(const Partitioner *p, int old) {
+inline int cpu_first(Partitioner *p) {
 #ifdef OCL_2_0
     if(p->strategy == DYNAMIC_PARTITIONING) {
-        return (old < p->n_tasks);
+        p->current = p->worklist->fetch_add(1);
     } else
 #endif
     {
-        return (old < p->cut);
+        p->current = p->thread_id;
     }
+    return p->current;
 }
 
 #else
 
-inline int gpu_first(const Partitioner *p, int id, __local int *tmp
+inline int gpu_first(Partitioner *p) {
 #ifdef OCL_2_0
-    ,
-    __global atomic_int *worklist) {
     if(p->strategy == DYNAMIC_PARTITIONING) {
         if(get_local_id(1) == 0 && get_local_id(0) == 0) {
-            tmp[0] = atomic_fetch_add(worklist, 1);
+            p->tmp[0] = atomic_fetch_add(p->worklist, 1);
         }
         barrier(CLK_LOCAL_MEM_FENCE);
-        return tmp[0];
+        p->current = p->tmp[0];
     } else
-#else
-    ) {
 #endif
     {
-        return p->cut + id;
+        p->current = p->cut + get_group_id(0);
+    }
+    return p->current;
+}
+
+#endif
+
+// Partitioner iterators: more() ----------------------------------------------
+
+#ifndef _OPENCL_COMPILER_
+
+inline bool cpu_more(const Partitioner *p) {
+#ifdef OCL_2_0
+    if(p->strategy == DYNAMIC_PARTITIONING) {
+        return (p->current < p->n_tasks);
+    } else
+#endif
+    {
+        return (p->current < p->cut);
     }
 }
 
-inline int gpu_next(const Partitioner *p, int old, int numGPUGroups, __local int *tmp
+#else
+
+inline bool gpu_more(const Partitioner *p) {
+    return (p->current < p->n_tasks);
+}
+
+#endif
+
+// Partitioner iterators: next() ----------------------------------------------
+
+#ifndef _OPENCL_COMPILER_
+
+inline int cpu_next(Partitioner *p) {
 #ifdef OCL_2_0
-    ,
-    __global atomic_int *worklist) {
+    if(p->strategy == DYNAMIC_PARTITIONING) {
+        p->current = p->worklist->fetch_add(1);
+    } else
+#endif
+    {
+        p->current = p->current + p->n_threads;
+    }
+    return p->current;
+}
+
+#else
+
+inline int gpu_next(Partitioner *p) {
+#ifdef OCL_2_0
     if(p->strategy == DYNAMIC_PARTITIONING) {
         if(get_local_id(1) == 0 && get_local_id(0) == 0) {
-            tmp[0] = atomic_fetch_add(worklist, 1);
+            p->tmp[0] = atomic_fetch_add(p->worklist, 1);
         }
         barrier(CLK_LOCAL_MEM_FENCE);
-        return tmp[0];
+        p->current = p->tmp[0];
     } else
-#else
-    ) {
 #endif
     {
-        return old + numGPUGroups;
+        p->current = p->current + get_num_groups(0);
     }
+    return p->current;
 }
 
-inline bool gpu_more(const Partitioner *p, int old) { return (old < p->n_tasks); }
-
 #endif
 
 #endif
+

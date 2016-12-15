@@ -59,5 +59,5 @@ struct Timer {
                       (stopTime[name].tv_usec - startTime[name].tv_usec);
     }
 
-    void print(string name, int REP) { cout << name << " Time (ms): " << time[name] / (1000 * REP) << endl; }
+		void print(string name, int REP) { printf("%s Time (ms): %f\n", name.c_str(), time[name] / (1000 * REP)); }
 };

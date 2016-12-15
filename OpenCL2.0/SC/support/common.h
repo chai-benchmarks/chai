@@ -35,6 +35,7 @@
 
 #ifndef _COMMON_H_
 #define _COMMON_H_
+
 #define OCL_2_0
 
 #define T int

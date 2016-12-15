@@ -42,7 +42,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <thread>
-#include <vector>
 #include <assert.h>
 
 struct Params {
@@ -93,7 +92,7 @@ struct Params {
             case 'q': queue_size    = atoi(optarg); break;
             case 'n': iterations    = atoi(optarg); break;
             default:
-                cerr << "\nUnrecognized option!" << endl;
+                fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
                 exit(0);
             }
@@ -104,7 +103,8 @@ struct Params {
     }
 
     void usage() {
-        cerr << "\nUsage:  ./tq [options]"
+        fprintf(stderr,
+                "\nUsage:  ./tq [options]"
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
@@ -122,28 +122,11 @@ struct Params {
                 "\n    -s <S>    task pool size (default=3200)"
                 "\n    -q <Q>    task queue size (default=320)"
                 "\n    -n <N>    # of iterations in heavy task (default=50)"
-                "\n";
+                "\n");
     }
 };
 
 // Input Data -----------------------------------------------------------------
-vector<string> tokenize(const string &str, const string &delimiters) {
-    vector<string> tokens;
-    // skip delimiters at beginning.
-    string::size_type lastPos = str.find_first_not_of(delimiters, 0);
-    // find first "non-delimiter".
-    string::size_type pos = str.find_first_of(delimiters, lastPos);
-    while(string::npos != pos || string::npos != lastPos) {
-        // found a token, add it to the vector.
-        tokens.push_back(str.substr(lastPos, pos - lastPos));
-        // skip delimiters.  Note the "not_of"
-        lastPos = str.find_first_not_of(delimiters, pos);
-        // find next "non-delimiter"
-        pos = str.find_first_of(delimiters, lastPos);
-    }
-    return tokens;
-};
-
 void read_input(int *pattern, task_t *task_pool, const Params &p) {
 
     // Patterns file name
@@ -152,35 +135,33 @@ void read_input(int *pattern, task_t *task_pool, const Params &p) {
     sprintf(filePatterns, "%s", p.file_name);
 
     // Read line from patterns file
-    ifstream myfile;
-    string   line;
-    myfile.open(filePatterns);
-    if(!myfile.is_open()) {
-        printf("%s does not exist\n", filePatterns);
-        exit(1);
+    FILE *File;
+    int r;
+    if((File = fopen(filePatterns, "rt")) != NULL) {
+        for(int y = 0; y <= p.pattern; y++) {
+            for(int x = 0; x < 512; x++) {
+                fscanf(File, "%d ", &r);
+                pattern[x] = r;
+            }
+        }
+        fclose(File);
+    } else {
+        printf("Unable to open file %s\n", filePatterns);
+        exit(-1);
     }
 
-    for(int x = 0; x <= p.pattern; x++) {
-        getline(myfile, line);
-    }
-    myfile.close();
-
-    //Create a random index from 0 to NBLOCKS - 1 for the computation block
     for(int i = 0; i < p.pool_size; i++) {
-        pattern[i] = 0;
         //Setting tasks in the tasks pool
         task_pool[i].id = i;
         task_pool[i].op = SIGNAL_NOTWORK_KERNEL;
     }
 
     //Read the pattern
-    vector<string> v(tokenize(line, " "));
     for(int i = 0; i < p.pool_size; i++) {
-        //int c = atoi(v[i].c_str());
-        int c      = atoi(v[i % 512].c_str());
-        pattern[i] = c;
-        if(pattern[i] == 1)
+        pattern[i] = pattern[i%512];
+        if(pattern[i] == 1) {
             task_pool[i].op = SIGNAL_WORK_KERNEL;
+        }
     }
 }
 
@@ -215,6 +196,7 @@ int main(int argc, char **argv) {
 
     // Initialize
     timer.start("Initialization");
+    const int max_wi = ocl.max_work_items(ocl.clKernel);
     read_input(pattern, task_pool, p);
     memset((void *)data, 0, p.pool_size * p.n_work_items * sizeof(int));
     for(int i = 0; i < NUM_TASK_QUEUES; i++) {
@@ -269,6 +251,8 @@ int main(int argc, char **argv) {
         // Kernel launch
         size_t ls[1] = {(size_t)p.n_work_items};
         size_t gs[1] = {(size_t)p.n_work_groups * p.n_work_items};
+        assert(ls[0] <= max_wi && 
+            "The work-group size is greater than the maximum work-group size that can be used to execute this kernel");
         clStatus     = clEnqueueNDRangeKernel(ocl.clCommandQueue, ocl.clKernel, 1, NULL, gs, ls, 0, NULL, NULL);
         CL_ERR();
 

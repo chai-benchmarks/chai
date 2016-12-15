@@ -86,7 +86,7 @@ struct Params {
             case 'c': comparison_file = optarg; break;
             case 'l': switching_limit = atoi(optarg); break;
             default:
-                cerr << "\nUnrecognized option!" << endl;
+                fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
                 exit(0);
             }
@@ -97,7 +97,8 @@ struct Params {
     }
 
     void usage() {
-        cerr << "\nUsage:  ./bfs [options]"
+        fprintf(stderr,
+                "\nUsage:  ./bfs [options]"
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
@@ -113,7 +114,7 @@ struct Params {
                 "\n    -f <F>    name of input file with control points (default=input/NYR_input.dat)"
                 "\n    -c <C>    comparison file (default=output/NYR_bfs_BFS.out)"
                 "\n    -l <L>    switching limit (default=128)"
-                "\n";
+                "\n");
     }
 };
 
@@ -207,6 +208,7 @@ int main(int argc, char **argv) {
 
     // Initialize
     timer.start("Initialization");
+    const int max_wi = ocl.max_work_items(ocl.clKernel);
     int source;
     read_input(source, h_nodes, h_edges, p);
     for(int i = 0; i < n_nodes; i++) {
@@ -402,6 +404,8 @@ int main(int argc, char **argv) {
                         timer.start("Kernel");
                     clSetKernelArg(ocl.clKernel, 4, sizeof(cl_mem), &d_qin); // Input and output queues
                     clSetKernelArg(ocl.clKernel, 5, sizeof(cl_mem), &d_qout);
+                    assert(ls[0] <= max_wi && 
+                        "The work-group size is greater than the maximum work-group size that can be used to execute this kernel");
                     clStatus = clEnqueueNDRangeKernel(ocl.clCommandQueue, ocl.clKernel, 1, NULL, gs, ls, 0, NULL, NULL);
                     clFinish(ocl.clCommandQueue);
                     CL_ERR();

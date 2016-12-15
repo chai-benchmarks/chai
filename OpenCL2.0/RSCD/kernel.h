@@ -35,14 +35,12 @@
 
 #include <atomic>
 #include "support/common.h"
-#include "support/partitioner.h"
 
 void run_cpu_threads(int *model_candidate, int *outliers_candidate, float *model_param_local, flowvector *flowvectors,
     int flowvector_count, int *random_numbers, int max_iter, int error_threshold, float convergence_threshold,
-    std::atomic_int *g_out_id, int num_threads, Partitioner p
+    std::atomic_int *g_out_id, int n_threads, int n_tasks, float alpha
 #ifdef OCL_2_0
-    ,
-    std::atomic_int *wl);
-#else
-    );
+    , std::atomic_int *worklist
 #endif
+    );
+

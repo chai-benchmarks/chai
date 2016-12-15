@@ -41,13 +41,13 @@
 #include "support/common.h"
 
 // OpenCL kernel ------------------------------------------------------------------------------------------
-__kernel void TQHistogram_gpu(__global task_t *ptr_queues, __global atomic_int *ptr_num_task_in_queue,
-    __global atomic_int *ptr_num_written_tasks, __global atomic_int *ptr_num_consumed_tasks,
-    __global atomic_int *ptr_histo, __global int *ptr_data, int gpuQueueSize, __local task_t *t,
+__kernel void TQHistogram_gpu(__global task_t *queues, __global atomic_int *n_task_in_queue,
+    __global atomic_int *n_written_tasks, __global atomic_int *n_consumed_tasks,
+    __global atomic_int *histo, __global int *data, int gpuQueueSize, __local task_t *t,
     __local int *last_queue, __local int *l_histo, int frame_size, int n_bins) {
 
     const int tid       = get_local_id(0);
-    int       tile_size = get_local_size(0);
+    const int tile_size = get_local_size(0);
 
     while(true) {
         // Fetch task
@@ -57,17 +57,17 @@ __kernel void TQHistogram_gpu(__global task_t *ptr_queues, __global atomic_int *
             bool not_done = true;
 
             do {
-                if(atomic_load(ptr_num_consumed_tasks + idx_queue) == atomic_load(ptr_num_written_tasks + idx_queue)) {
+                if(atomic_load(n_consumed_tasks + idx_queue) == atomic_load(n_written_tasks + idx_queue)) {
                     idx_queue = (idx_queue + 1) % NUM_TASK_QUEUES;
                 } else {
-                    if(atomic_load(ptr_num_task_in_queue + idx_queue) > 0) {
-                        j = atomic_fetch_sub(ptr_num_task_in_queue + idx_queue, 1) - 1;
+                    if(atomic_load(n_task_in_queue + idx_queue) > 0) {
+                        j = atomic_fetch_sub(n_task_in_queue + idx_queue, 1) - 1;
                         if(j >= 0) {
-                            t->id    = (ptr_queues + idx_queue * gpuQueueSize + j)->id;
-                            t->op    = (ptr_queues + idx_queue * gpuQueueSize + j)->op;
-                            jj       = atomic_fetch_add(ptr_num_consumed_tasks + idx_queue, 1) + 1;
+                            t->id    = (queues + idx_queue * gpuQueueSize + j)->id;
+                            t->op    = (queues + idx_queue * gpuQueueSize + j)->op;
+                            jj       = atomic_fetch_add(n_consumed_tasks + idx_queue, 1) + 1;
                             not_done = false;
-                            if(jj == atomic_load(ptr_num_written_tasks + idx_queue)) {
+                            if(jj == atomic_load(n_written_tasks + idx_queue)) {
                                 idx_queue = (idx_queue + 1) % NUM_TASK_QUEUES;
                             }
                             *last_queue = idx_queue;
@@ -94,7 +94,7 @@ __kernel void TQHistogram_gpu(__global task_t *ptr_queues, __global atomic_int *
                 barrier(CLK_LOCAL_MEM_FENCE);
 
                 for(int i = tid; i < frame_size; i += tile_size) {
-                    int value = (ptr_data[t->id * frame_size + i] * n_bins) >> 8;
+                    int value = (data[t->id * frame_size + i] * n_bins) >> 8;
 
                     atomic_add(l_histo + value, 1);
                 }
@@ -102,7 +102,7 @@ __kernel void TQHistogram_gpu(__global task_t *ptr_queues, __global atomic_int *
                 barrier(CLK_LOCAL_MEM_FENCE);
                 // Store in global memory
                 for(int i = tid; i < n_bins; i += tile_size) {
-                    ptr_histo[t->id * n_bins + i] = l_histo[i];
+                    histo[t->id * n_bins + i] = l_histo[i];
                 }
             }
         }

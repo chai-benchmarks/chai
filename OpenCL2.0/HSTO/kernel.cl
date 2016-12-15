@@ -41,13 +41,10 @@
 #include "support/common.h"
 
 // OpenCL kernel ------------------------------------------------------------------------------------------
-__kernel void Histogram_kernel(
-    __global unsigned int *histo, __global unsigned int *data, int size, int bins, int cpu_bins
+__kernel void Histogram_kernel(int size, int bins, int cpu_bins, __global unsigned int *data, __global unsigned int *histo,
 #ifdef OCL_2_0
-    ,
     __local atomic_uint *l_histo
 #else
-    ,
     __local unsigned int *l_histo
 #endif
     ) {

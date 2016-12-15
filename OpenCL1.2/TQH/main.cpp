@@ -95,7 +95,7 @@ struct Params {
             case 'n': n             = atoi(optarg); break;
             case 'b': n_bins        = atoi(optarg); break;
             default:
-                cerr << "\nUnrecognized option!" << endl;
+                fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
                 exit(0);
             }
@@ -106,7 +106,8 @@ struct Params {
     }
 
     void usage() {
-        cerr << "\nUsage:  ./tqh [options]"
+        fprintf(stderr,
+                "\nUsage:  ./tqh [options]"
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
@@ -125,7 +126,7 @@ struct Params {
                 "\n    -m <M>    video height (default=288)"
                 "\n    -n <N>    video width (default=352)"
                 "\n    -b <B>    # of histogram bins (default=256)"
-                "\n";
+                "\n");
     }
 };
 
@@ -148,7 +149,7 @@ void read_input(int *data, task_t *task_pool, const Params &p) {
             }
             fclose(File);
         } else {
-            std::cout << "Unable to open file " << dctFileName << std::endl;
+            printf("Unable to open file %s\n", dctFileName);
             exit(-1);
         }
         fr++;
@@ -191,6 +192,7 @@ int main(int argc, char **argv) {
 
     // Initialize
     timer.start("Initialization");
+    const int max_wi = ocl.max_work_items(ocl.clKernel);
     read_input(h_data_pool, h_task_pool, p);
     memset((void *)h_histo_queues, 0, p.queue_size * p.n_bins * sizeof(int));
     memset((void *)h_consumed, 0, sizeof(int));
@@ -245,6 +247,8 @@ int main(int argc, char **argv) {
             // Kernel launch
             size_t ls[1] = {(size_t)p.n_work_items};
             size_t gs[1] = {(size_t)p.n_work_groups * p.n_work_items};
+            assert(ls[0] <= max_wi && 
+                "The work-group size is greater than the maximum work-group size that can be used to execute this kernel");
             clStatus     = clEnqueueNDRangeKernel(ocl.clCommandQueue, ocl.clKernel, 1, NULL, gs, ls, 0, NULL, NULL);
             CL_ERR();
             clFinish(ocl.clCommandQueue);

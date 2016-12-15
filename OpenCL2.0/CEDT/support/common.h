@@ -38,10 +38,6 @@
 
 #define OCL_2_0
 
-// Gauss kernel
-#define L_SIZE 16
-
 #define PRINT 0
-#define DISPLAY 0
 
 #endif

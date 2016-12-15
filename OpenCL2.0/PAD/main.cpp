@@ -36,7 +36,6 @@
 #include "kernel.h"
 #include "support/common.h"
 #include "support/ocl.h"
-#include "support/partitioner.h"
 #include "support/timer.h"
 #include "support/verify.h"
 
@@ -91,22 +90,32 @@ struct Params {
             case 'n': n             = atoi(optarg); break;
             case 'e': pad           = atoi(optarg); break;
             default:
-                cerr << "\nUnrecognized option!" << endl;
+                fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
                 exit(0);
             }
         }
-        if(alpha > 0.0 && alpha < 1.0) {
+        if(alpha == 0.0) {
+            assert(n_work_items > 0 && "Invalid # of device work-items!");
+            assert(n_work_groups > 0 && "Invalid # of device work-groups!");
+        } else if(alpha == 1.0) {
+            assert(n_threads > 0 && "Invalid # of host threads!");
+        } else if(alpha > 0.0 && alpha < 1.0) {
             assert(n_work_items > 0 && "Invalid # of device work-items!");
             assert(n_work_groups > 0 && "Invalid # of device work-groups!");
             assert(n_threads > 0 && "Invalid # of host threads!");
         } else {
-            assert((n_work_items > 0 && n_work_groups > 0 || n_threads > 0) && "Invalid # of CPU + GPU workers!");
+#ifdef OCL_2_0
+            assert((n_work_items > 0 && n_work_groups > 0 || n_threads > 0) && "Invalid # of host + device workers!");
+#else
+            assert(0 && "Illegal value for -a");
+#endif
         }
     }
 
     void usage() {
-        cerr << "\nUsage:  ./pad [options]"
+        fprintf(stderr,
+                "\nUsage:  ./pad [options]"
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
@@ -120,12 +129,17 @@ struct Params {
                 "\n"
                 "\nData-partitioning-specific options:"
                 "\n    -a <A>    fraction of input elements to process on host (default=0.1)"
+#ifdef OCL_2_0
+                "\n              NOTE: Dynamic partitioning used when <A> is not between 0.0 and 1.0"
+#else
+                "\n              NOTE: <A> must be between 0.0 and 1.0"
+#endif
                 "\n"
                 "\nBenchmark-specific options:"
                 "\n    -m <M>    # of rows (default=1000)"
                 "\n    -n <N>    # of columns (default=999)"
                 "\n    -e <B>    # of extra columns to pad (default=1)"
-                "\n";
+                "\n");
     }
 };
 
@@ -184,14 +198,14 @@ int main(int argc, char **argv) {
 
     // Initialize
     timer.start("Initialization");
+    const int max_wi = ocl.max_work_items(ocl.clKernel);
     read_input(h_in_out, p);
     memset(h_flags, 0, n_flags * sizeof(atomic_int));
-    Partitioner partitioner = partitioner_create(n_tasks, p.alpha);
 #ifdef OCL_2_0
     h_flags[0].store(1);
 #else
-    h_flags[0]                   = 1;
-    h_flags[partitioner.cut]     = 1;
+    h_flags[0]           = 1;
+    h_flags[n_tasks_cpu] = 1;
 #endif
     timer.stop("Initialization");
     timer.print("Initialization", 1);
@@ -219,12 +233,12 @@ int main(int argc, char **argv) {
         memset(h_flags, 0, n_flags * sizeof(atomic_int));
 #ifdef OCL_2_0
         h_flags[0].store(1);
-        if(partitioner.strategy == DYNAMIC_PARTITIONING) {
+        if(p.alpha < 0.0 || p.alpha > 1.0) { // Dynamic partitioning
             worklist[0].store(0);
         }
 #else
-        h_flags[0]               = 1;
-        h_flags[partitioner.cut] = 1;
+        h_flags[0]           = 1;
+        h_flags[n_tasks_cpu] = 1;
         clStatus = clEnqueueWriteBuffer(
             ocl.clCommandQueue, d_in_out, CL_TRUE, 0, n_tasks_gpu * p.n_work_items * REGS * sizeof(T), h_in_out, 0, 
             NULL, NULL);
@@ -237,38 +251,38 @@ int main(int argc, char **argv) {
         if(rep >= p.n_warmup)
             timer.start("Kernel");
 
+        clSetKernelArg(ocl.clKernel, 0, sizeof(int), &p.n);
+        clSetKernelArg(ocl.clKernel, 1, sizeof(int), &p.m);
+        clSetKernelArg(ocl.clKernel, 2, sizeof(int), &p.pad);
+        clSetKernelArg(ocl.clKernel, 3, sizeof(int), &n_tasks);
+        clSetKernelArg(ocl.clKernel, 4, sizeof(float), &p.alpha);
 #ifdef OCL_2_0
-        clSetKernelArgSVMPointer(ocl.clKernel, 0, d_in_out);
-        clSetKernelArgSVMPointer(ocl.clKernel, 1, d_in_out);
-        clSetKernelArgSVMPointer(ocl.clKernel, 2, d_flags);
-#else
-        clSetKernelArg(ocl.clKernel, 0, sizeof(cl_mem), &d_in_out);
-        clSetKernelArg(ocl.clKernel, 1, sizeof(cl_mem), &d_in_out);
-        clSetKernelArg(ocl.clKernel, 2, sizeof(cl_mem), &d_flags);
-#endif
-        clSetKernelArg(ocl.clKernel, 3, sizeof(int), NULL);
-        clSetKernelArg(ocl.clKernel, 4, sizeof(int), &p.n);
-        clSetKernelArg(ocl.clKernel, 5, sizeof(int), &p.m);
-        clSetKernelArg(ocl.clKernel, 6, sizeof(int), &p.pad);
-        clSetKernelArg(ocl.clKernel, 7, sizeof(Partitioner), &partitioner);
-#ifdef OCL_2_0
+        clSetKernelArgSVMPointer(ocl.clKernel, 5, d_in_out);
+        clSetKernelArgSVMPointer(ocl.clKernel, 6, d_in_out);
+        clSetKernelArgSVMPointer(ocl.clKernel, 7, d_flags);
         clSetKernelArgSVMPointer(ocl.clKernel, 8, worklist);
+        clSetKernelArg(ocl.clKernel, 9, sizeof(int), NULL);
+#else
+        clSetKernelArg(ocl.clKernel, 5, sizeof(cl_mem), &d_in_out);
+        clSetKernelArg(ocl.clKernel, 6, sizeof(cl_mem), &d_in_out);
+        clSetKernelArg(ocl.clKernel, 7, sizeof(cl_mem), &d_flags);
 #endif
 
         // Kernel launch
         size_t ls[1] = {(size_t)p.n_work_items};
         size_t gs[1] = {(size_t)p.n_work_items * p.n_work_groups};
         if(gs[0] > 0) {
+            assert(ls[0] <= max_wi && 
+                "The work-group size is greater than the maximum work-group size that can be used to execute this kernel");
             clStatus = clEnqueueNDRangeKernel(ocl.clCommandQueue, ocl.clKernel, 1, NULL, gs, ls, 0, NULL, NULL);
             CL_ERR();
         }
 
         // Launch CPU threads
         std::thread main_thread(
-            run_cpu_threads, h_in_out, h_in_out, h_flags, p.n, p.m, p.pad, p.n_threads, p.n_work_items, partitioner
+            run_cpu_threads, h_in_out, h_in_out, h_flags, p.n, p.m, p.pad, p.n_threads, p.n_work_items, n_tasks, p.alpha
 #ifdef OCL_2_0
-            ,
-            worklist
+            , worklist
 #endif
             );
 

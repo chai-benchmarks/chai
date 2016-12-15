@@ -41,19 +41,19 @@
 #include "support/common.h"
 
 // OpenCL kernel ------------------------------------------------------------------------------------------
-__kernel void TQHistogram_gpu(__global task_t *ptr_queue, __global int *ptr_data, __global int *ptr_histo, int offset,
+__kernel void TQHistogram_gpu(__global task_t *queue, __global int *data, __global int *histo, int offset,
     __local task_t *t, int gpuQueueSize, __global int *consumed, __local int *next, __local int *l_histo,
     int frame_size, int n_bins) {
 
     const int tid       = get_local_id(0);
     const int tileid    = get_group_id(0);
-    int       tile_size = get_local_size(0);
+    const int tile_size = get_local_size(0);
 
     // Fetch task
     if(tid == 0) {
         *next = atomic_add(consumed, 1);
-        t->id = ptr_queue[*next].id;
-        t->op = ptr_queue[*next].op;
+        t->id = queue[*next].id;
+        t->op = queue[*next].op;
     }
     barrier(CLK_LOCAL_MEM_FENCE); // It can be removed if work-group = wavefront
 
@@ -67,7 +67,7 @@ __kernel void TQHistogram_gpu(__global task_t *ptr_queue, __global int *ptr_data
             barrier(CLK_LOCAL_MEM_FENCE);
 
             for(int i = tid; i < frame_size; i += tile_size) {
-                int value = (ptr_data[(t->id - offset) * frame_size + i] * n_bins) >> 8;
+                int value = (data[(t->id - offset) * frame_size + i] * n_bins) >> 8;
 
                 atomic_add(&l_histo[value], 1);
             }
@@ -75,15 +75,15 @@ __kernel void TQHistogram_gpu(__global task_t *ptr_queue, __global int *ptr_data
             barrier(CLK_LOCAL_MEM_FENCE);
             // Store in global memory
             for(int i = tid; i < n_bins; i += tile_size) {
-                ptr_histo[(t->id - offset) * n_bins + i] = l_histo[i];
+                histo[(t->id - offset) * n_bins + i] = l_histo[i];
             }
         }
 
         if(tid == 0) {
             *next = atomic_add(consumed, 1);
             // Fetch task
-            t->id = ptr_queue[*next].id;
-            t->op = ptr_queue[*next].op;
+            t->id = queue[*next].id;
+            t->op = queue[*next].op;
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }

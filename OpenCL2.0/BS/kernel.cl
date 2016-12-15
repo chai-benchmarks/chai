@@ -69,14 +69,19 @@ T BezierBlendGPU(int k, T mu, int n) {
 }
 
 // OpenCL kernel --------------------------------------------------------------
-__kernel void Bezier_surface(__global XYZ *in, __global XYZ *outp, Partitioner p, __local int *l_tmp, __local XYZ *l_in,
-    int in_size_i, int in_size_j, int out_size_i, int out_size_j
+__kernel void Bezier_surface(int n_tasks, float alpha, int in_size_i, int in_size_j, int out_size_i,
+    int out_size_j, __local XYZ *l_in, __global XYZ *in, __global XYZ *outp
 #ifdef OCL_2_0
-    ,
-    __global atomic_int *worklist
+    , __global atomic_int *worklist, __local int *l_tmp
 #endif
     ) {
 
+#ifdef OCL_2_0
+    Partitioner p = partitioner_create(n_tasks, alpha, worklist, l_tmp);
+#else
+    Partitioner p = partitioner_create(n_tasks, alpha);
+#endif
+    
     const int wg_in_J = divceil(out_size_j, get_local_size(0));
     const int wg_in_I = divceil(out_size_i, get_local_size(1));
 
@@ -85,13 +90,7 @@ __kernel void Bezier_surface(__global XYZ *in, __global XYZ *outp, Partitioner p
         l_in[i] = in[i];
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    const int gid = get_group_id(0);
-    const int ng  = get_num_groups(0);
-#ifdef OCL_2_0
-    for(int t = gpu_first(&p, gid, l_tmp, worklist); gpu_more(&p, t); t = gpu_next(&p, t, ng, l_tmp, worklist)) {
-#else
-    for(int t = gpu_first(&p, gid, l_tmp); gpu_more(&p, t); t = gpu_next(&p, t, ng, l_tmp)) {
-#endif
+    for(int t = gpu_first(&p); gpu_more(&p); t = gpu_next(&p)) {
         const int my_s1 = t / wg_in_J;
         const int my_s0 = t % wg_in_J;
 

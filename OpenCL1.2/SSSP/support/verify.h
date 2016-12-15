@@ -39,11 +39,11 @@
 inline int verify(std::atomic_int *h_cost, int num_of_nodes, const char *file_name) {
 // Compare to output file
 #if PRINT
-    std::cout << "Comparing outputs..." << std::endl;
+    printf("Comparing outputs...\n");
 #endif
     FILE *fpo = fopen(file_name, "r");
     if(!fpo) {
-        std::cout << "Error Reading output file" << std::endl;
+        printf("Error Reading output file\n");
         exit(EXIT_FAILURE);
     }
 #if PRINT
@@ -54,7 +54,7 @@ inline int verify(std::atomic_int *h_cost, int num_of_nodes, const char *file_na
     int num_of_nodes_o = 0;
     fscanf(fpo, "%d", &num_of_nodes_o);
     if(num_of_nodes != num_of_nodes_o) {
-        std::cout << "FAIL: Number of nodes does not match the expected value" << std::endl;
+        printf("FAIL: Number of nodes does not match the expected value\n");
         exit(EXIT_FAILURE);
     }
 
@@ -63,8 +63,8 @@ inline int verify(std::atomic_int *h_cost, int num_of_nodes, const char *file_na
         int j, cost;
         fscanf(fpo, "%d %d", &j, &cost);
         if(i != j || h_cost[i].load() * -1 != cost) {
-            std::cout << "FAIL: Computed node " << i << " cost (" << h_cost[i].load() << " != " << cost
-                      << ") does not match the expected value" << std::endl;
+            printf("FAIL: Computed node %d cost (%d != %d) does not match the expected value\n", i, h_cost[i].load(), 
+                cost);
             exit(EXIT_FAILURE);
         }
     }

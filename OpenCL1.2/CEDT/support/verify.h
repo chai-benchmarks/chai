@@ -36,7 +36,7 @@
 #include "common.h"
 #include <math.h>
 
-inline int compare_output(cv::Mat *all_out_frames, int image_size, const char *file_name, int num_frames, int rowsc, int colsc) {
+inline int compare_output(cv::Mat *all_out_frames, int image_size, const char *file_name, int num_frames, int rowsc, int colsc, int rowsc_, int colsc_) {
     // Compare to output file
     FILE *out_file = fopen(file_name, "r");
     if(!out_file) {
@@ -49,27 +49,31 @@ inline int compare_output(cv::Mat *all_out_frames, int image_size, const char *f
 
     int count_error = 0;
     for(int i = 0; i < num_frames; i++) {
-        for(int j = 0; j < image_size; j++) {
-            int pix;
-            fscanf(out_file, "%d ", &pix);
-            if((int)all_out_frames[i].data[j] != pix) {
-                int row = j/colsc;
-                int col = j%colsc;
-                if(row > 1 && row < rowsc-2 && col > 1 && col < colsc-2){
-                    count_error++;
+        for(int r = 0; r < rowsc; r++) {
+            for(int c = 0; c < colsc; c++) {
+                int pix;
+                fscanf(out_file, "%d ", &pix);
+                if((int)all_out_frames[i].data[r*colsc+c] != pix) {
+                    if(r > 3 && r < rowsc-4 && c > 3 && c < colsc-4){
+                        count_error++;
+                    }
                 }
             }
+            // Scan until end of row
+            if(colsc<colsc_) fscanf(out_file, "%*[^\n]\n");
         }
+        // Scan until end of frame
+        for(int rr=rowsc;rr<rowsc_;rr++) fscanf(out_file, "%*[^\n]\n");
     }
 
     fclose(out_file);
-    if((float)count_error / (float)(image_size * num_frames) >= 1e-1){
+    if((float)count_error / (float)(image_size * num_frames) >= 1e-6){
         printf("Test failed\n");
         exit(EXIT_FAILURE);
     }
     return 0;
 }
 
-inline void verify(cv::Mat *all_out_frames, int image_size, const char *file_name, int num_frames, int rowsc, int colsc) {
-    compare_output(all_out_frames, image_size, file_name, num_frames, rowsc, colsc);
+inline void verify(cv::Mat *all_out_frames, int image_size, const char *file_name, int num_frames, int rowsc, int colsc, int rowsc_, int colsc_) {
+    compare_output(all_out_frames, image_size, file_name, num_frames, rowsc, colsc, rowsc_, colsc_);
 }

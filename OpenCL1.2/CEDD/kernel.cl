@@ -39,20 +39,24 @@
 #pragma OPENCL EXTENSION cl_khr_global_int32_extended_atomics : enable
 
 #include "support/common.h"
+__constant float gaus[3][3] = {{0.0625f, 0.125f, 0.0625f}, {0.1250f, 0.250f, 0.1250f}, {0.0625f, 0.125f, 0.0625f}};
+__constant int   sobx[3][3] = {{-1, 0, 1}, {-2, 0, 2}, {-1, 0, 1}};
+__constant int   soby[3][3] = {{-1, -2, -1}, {0, 0, 0}, {1, 2, 1}};
 
 // https://github.com/smskelley/canny-opencl
 // Gaussian Kernel
 // data: image input data with each pixel taking up 1 byte (8Bit 1Channel)
 // out: image output data (8B1C)
 __kernel void gaussian_kernel(__global unsigned char *data, __global unsigned char *out, int rows, int cols,
-    __local int *l_data, __global float *gaus) {
-    int sum   = 0;
-    int g_row = get_global_id(0);
-    int g_col = get_global_id(1);
-    int l_row = get_local_id(0) + 1;
-    int l_col = get_local_id(1) + 1;
+    __local int *l_data) {
+    const int L_SIZE = get_local_size(0);
+    int sum         = 0;
+    const int g_row = get_global_id(1);
+    const int g_col = get_global_id(0);
+    const int l_row = get_local_id(1) + 1;
+    const int l_col = get_local_id(0) + 1;
 
-    int pos = g_row * cols + g_col;
+    const int pos = g_row * cols + g_col;
 
     // copy to local
     l_data[l_row * (L_SIZE + 2) + l_col] = data[pos];
@@ -89,7 +93,7 @@ __kernel void gaussian_kernel(__global unsigned char *data, __global unsigned ch
 
     for(int i = 0; i < 3; i++) {
         for(int j = 0; j < 3; j++) {
-            sum += gaus[i * 3 + j] * l_data[(i + l_row - 1) * (L_SIZE + 2) + j + l_col - 1];
+            sum += gaus[i][j] * l_data[(i + l_row - 1) * (L_SIZE + 2) + j + l_col - 1];
         }
     }
 
@@ -102,49 +106,50 @@ __kernel void gaussian_kernel(__global unsigned char *data, __global unsigned ch
 // out:   image output data (8B1C)
 // theta: angle output data
 __kernel void sobel_kernel(__global unsigned char *data, __global unsigned char *out, __global unsigned char *theta,
-    int rows, int cols, __local int *l_data, __global int *sobx, __global int *soby) {
+    int rows, int cols, __local int *l_data) {
     // collect sums separately. we're storing them into floats because that
     // is what hypot and atan2 will expect.
-    const float PI    = 3.14159265;
-    int         g_row = get_global_id(0);
-    int         g_col = get_global_id(1);
-    int         l_row = get_local_id(0) + 1;
-    int         l_col = get_local_id(1) + 1;
+    const int L_SIZE = get_local_size(0);
+    const float PI    = 3.14159265f;
+    const int   g_row = get_global_id(1);
+    const int   g_col = get_global_id(0);
+    const int   l_row = get_local_id(1) + 1;
+    const int   l_col = get_local_id(0) + 1;
 
-    int pos = g_row * cols + g_col;
+    const int pos = g_row * cols + g_col;
 
     // copy to local
-    l_data[l_row * 18 + l_col] = data[pos];
+    l_data[l_row * (L_SIZE + 2) + l_col] = data[pos];
 
     // top most row
     if(l_row == 1) {
-        l_data[0 * 18 + l_col] = data[pos - cols];
+        l_data[0 * (L_SIZE + 2) + l_col] = data[pos - cols];
         // top left
         if(l_col == 1)
-            l_data[0 * 18 + 0] = data[pos - cols - 1];
+            l_data[0 * (L_SIZE + 2) + 0] = data[pos - cols - 1];
 
         // top right
-        else if(l_col == 16)
-            l_data[0 * 18 + 17] = data[pos - cols + 1];
+        else if(l_col == L_SIZE)
+            l_data[0 * (L_SIZE + 2) + (L_SIZE + 1)] = data[pos - cols + 1];
     }
     // bottom most row
-    else if(l_row == 16) {
-        l_data[17 * 18 + l_col] = data[pos + cols];
+    else if(l_row == L_SIZE) {
+        l_data[(L_SIZE + 1) * (L_SIZE + 2) + l_col] = data[pos + cols];
         // bottom left
         if(l_col == 1)
-            l_data[17 * 18 + 0] = data[pos + cols - 1];
+            l_data[(L_SIZE + 1) * (L_SIZE + 2) + 0] = data[pos + cols - 1];
 
         // bottom right
-        else if(l_col == 16)
-            l_data[17 * 18 + 17] = data[pos + cols + 1];
+        else if(l_col == L_SIZE)
+            l_data[(L_SIZE + 1) * (L_SIZE + 2) + (L_SIZE + 1)] = data[pos + cols + 1];
     }
 
     // left
     if(l_col == 1)
-        l_data[l_row * 18 + 0] = data[pos - 1];
+        l_data[l_row * (L_SIZE + 2) + 0] = data[pos - 1];
     // right
-    else if(l_col == 16)
-        l_data[l_row * 18 + 17] = data[pos + 1];
+    else if(l_col == L_SIZE)
+        l_data[l_row * (L_SIZE + 2) + (L_SIZE + 1)] = data[pos + 1];
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -152,8 +157,8 @@ __kernel void sobel_kernel(__global unsigned char *data, __global unsigned char 
     // find x and y derivatives
     for(int i = 0; i < 3; i++) {
         for(int j = 0; j < 3; j++) {
-            sumx += sobx[i * 3 + j] * l_data[(i + l_row - 1) * 18 + j + l_col - 1];
-            sumy += soby[i * 3 + j] * l_data[(i + l_row - 1) * 18 + j + l_col - 1];
+            sumx += sobx[i][j] * l_data[(i + l_row - 1) * (L_SIZE + 2) + j + l_col - 1];
+            sumy += soby[i][j] * l_data[(i + l_row - 1) * (L_SIZE + 2) + j + l_col - 1];
         }
     }
 
@@ -204,47 +209,48 @@ __kernel void non_max_supp_kernel(__global unsigned char *data, __global unsigne
     __global unsigned char *theta, int rows, int cols, __local int *l_data) {
     // These variables are offset by one to avoid seg. fault errors
     // As such, this kernel ignores the outside ring of pixels
-    int g_row = get_global_id(0);
-    int g_col = get_global_id(1);
-    int l_row = get_local_id(0) + 1;
-    int l_col = get_local_id(1) + 1;
+    const int L_SIZE = get_local_size(0);
+    const int g_row = get_global_id(1);
+    const int g_col = get_global_id(0);
+    const int l_row = get_local_id(1) + 1;
+    const int l_col = get_local_id(0) + 1;
 
-    int pos = g_row * cols + g_col;
+    const int pos = g_row * cols + g_col;
 
     // copy to l_data
-    l_data[l_row * 18 + l_col] = data[pos];
+    l_data[l_row * (L_SIZE + 2) + l_col] = data[pos];
 
     // top most row
     if(l_row == 1) {
-        l_data[0 * 18 + l_col] = data[pos - cols];
+        l_data[0 * (L_SIZE + 2) + l_col] = data[pos - cols];
         // top left
         if(l_col == 1)
-            l_data[0 * 18 + 0] = data[pos - cols - 1];
+            l_data[0 * (L_SIZE + 2) + 0] = data[pos - cols - 1];
 
         // top right
-        else if(l_col == 16)
-            l_data[0 * 18 + 17] = data[pos - cols + 1];
+        else if(l_col == L_SIZE)
+            l_data[0 * (L_SIZE + 2) + (L_SIZE + 1)] = data[pos - cols + 1];
     }
     // bottom most row
-    else if(l_row == 16) {
-        l_data[17 * 18 + l_col] = data[pos + cols];
+    else if(l_row == L_SIZE) {
+        l_data[(L_SIZE + 1) * (L_SIZE + 2) + l_col] = data[pos + cols];
         // bottom left
         if(l_col == 1)
-            l_data[17 * 18 + 0] = data[pos + cols - 1];
+            l_data[(L_SIZE + 1) * (L_SIZE + 2) + 0] = data[pos + cols - 1];
 
         // bottom right
-        else if(l_col == 16)
-            l_data[17 * 18 + 17] = data[pos + cols + 1];
+        else if(l_col == L_SIZE)
+            l_data[(L_SIZE + 1) * (L_SIZE + 2) + (L_SIZE + 1)] = data[pos + cols + 1];
     }
 
     if(l_col == 1)
-        l_data[l_row * 18 + 0] = data[pos - 1];
-    else if(l_col == 16)
-        l_data[l_row * 18 + 17] = data[pos + 1];
+        l_data[l_row * (L_SIZE + 2) + 0] = data[pos - 1];
+    else if(l_col == L_SIZE)
+        l_data[l_row * (L_SIZE + 2) + (L_SIZE + 1)] = data[pos + 1];
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    unsigned char my_magnitude = l_data[l_row * 18 + l_col];
+    unsigned char my_magnitude = l_data[l_row * (L_SIZE + 2) + l_col];
 
     // The following variables are used to address the matrices more easily
     switch(theta[pos]) {
@@ -252,8 +258,8 @@ __kernel void non_max_supp_kernel(__global unsigned char *data, __global unsigne
     // Check neighbors to the East and West
     case 0:
         // supress me if my neighbor has larger magnitude
-        if(my_magnitude <= l_data[l_row * 18 + l_col + 1] || // east
-            my_magnitude <= l_data[l_row * 18 + l_col - 1]) // west
+        if(my_magnitude <= l_data[l_row * (L_SIZE + 2) + l_col + 1] || // east
+            my_magnitude <= l_data[l_row * (L_SIZE + 2) + l_col - 1]) // west
         {
             out[pos] = 0;
         }
@@ -267,8 +273,8 @@ __kernel void non_max_supp_kernel(__global unsigned char *data, __global unsigne
     // Check neighbors to the NE and SW
     case 45:
         // supress me if my neighbor has larger magnitude
-        if(my_magnitude <= l_data[(l_row - 1) * 18 + l_col + 1] || // north east
-            my_magnitude <= l_data[(l_row + 1) * 18 + l_col - 1]) // south west
+        if(my_magnitude <= l_data[(l_row - 1) * (L_SIZE + 2) + l_col + 1] || // north east
+            my_magnitude <= l_data[(l_row + 1) * (L_SIZE + 2) + l_col - 1]) // south west
         {
             out[pos] = 0;
         }
@@ -282,8 +288,8 @@ __kernel void non_max_supp_kernel(__global unsigned char *data, __global unsigne
     // Check neighbors to the North and South
     case 90:
         // supress me if my neighbor has larger magnitude
-        if(my_magnitude <= l_data[(l_row - 1) * 18 + l_col] || // north
-            my_magnitude <= l_data[(l_row + 1) * 18 + l_col]) // south
+        if(my_magnitude <= l_data[(l_row - 1) * (L_SIZE + 2) + l_col] || // north
+            my_magnitude <= l_data[(l_row + 1) * (L_SIZE + 2) + l_col]) // south
         {
             out[pos] = 0;
         }
@@ -297,8 +303,8 @@ __kernel void non_max_supp_kernel(__global unsigned char *data, __global unsigne
     // Check neighbors to the NW and SE
     case 135:
         // supress me if my neighbor has larger magnitude
-        if(my_magnitude <= l_data[(l_row - 1) * 18 + l_col - 1] || // north west
-            my_magnitude <= l_data[(l_row + 1) * 18 + l_col + 1]) // south east
+        if(my_magnitude <= l_data[(l_row - 1) * (L_SIZE + 2) + l_col - 1] || // north west
+            my_magnitude <= l_data[(l_row + 1) * (L_SIZE + 2) + l_col + 1]) // south east
         {
             out[pos] = 0;
         }
@@ -322,9 +328,9 @@ __kernel void hyst_kernel(__global unsigned char *data, __global unsigned char *
 
     // These variables are offset by one to avoid seg. fault errors
     // As such, this kernel ignores the outside ring of pixels
-    int row = get_global_id(0);
-    int col = get_global_id(1);
-    int pos = row * cols + col;
+    const int row = get_global_id(1);
+    const int col = get_global_id(0);
+    const int pos = row * cols + col;
 
     const unsigned char EDGE = 255;
 

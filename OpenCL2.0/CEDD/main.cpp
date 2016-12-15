@@ -56,6 +56,7 @@ struct Params {
     float       alpha;
     const char *file_name;
     const char *comparison_file;
+    int         display = 0;
 
     Params(int argc, char **argv) {
         platform        = 0;
@@ -68,7 +69,7 @@ struct Params {
         file_name       = "input/PeppaPigandSuzieSheepWhistle.mov";
         comparison_file = "output/Peppa.txt";
         char opt;
-        while((opt = getopt(argc, argv, "hp:d:i:t:w:r:a:f:c:")) >= 0) {
+        while((opt = getopt(argc, argv, "hp:d:i:t:w:r:a:f:c:x")) >= 0) {
             switch(opt) {
             case 'h':
                 usage();
@@ -83,22 +84,28 @@ struct Params {
             case 'a': alpha           = atof(optarg); break;
             case 'f': file_name       = optarg; break;
             case 'c': comparison_file = optarg; break;
+            case 'x': display         = 1; break;
             default:
-                cerr << "\nUnrecognized option!" << endl;
+                fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
                 exit(0);
             }
         }
-        if(alpha > 0.0 && alpha < 1.0) {
+        if(alpha == 0.0) {
+            assert(n_work_items > 0 && "Invalid # of device work-items!");
+        } else if(alpha == 1.0) {
+            assert(n_threads > 0 && "Invalid # of host threads!");
+        } else if(alpha > 0.0 && alpha < 1.0) {
             assert(n_work_items > 0 && "Invalid # of device work-items!");
             assert(n_threads > 0 && "Invalid # of host threads!");
         } else {
-            assert((n_work_items > 0 || n_threads > 0) && "Invalid # of CPU + GPU workers!");
+            assert((n_work_items > 0 || n_threads > 0) && "Invalid # of host + device workers!");
         }
     }
 
     void usage() {
-        cerr << "\nUsage:  ./cedd [options]"
+        fprintf(stderr,
+                "\nUsage:  ./cedd [options]"
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
@@ -111,16 +118,18 @@ struct Params {
                 "\n"
                 "\nData-partitioning-specific options:"
                 "\n    -a <A>    fraction of input elements to process on host (default=0.2)"
+                "\n              NOTE: Dynamic partitioning used when <A> is not between 0.0 and 1.0"
                 "\n"
                 "\nBenchmark-specific options:"
                 "\n    -f <F>    input video file name (default=input/PeppaPigandSuzieSheepWhistle.mov)"
                 "\n    -c <C>    comparison file (default=output/Peppa.txt)"
-                "\n";
+                "\n    -x        display output video"
+                "\n");
     }
 };
 
 // Input Data -----------------------------------------------------------------
-void read_input(cv::Mat *all_gray_frames, int &rowsc, int &colsc, int &in_size, const Params &p) {
+void read_input(cv::Mat *all_gray_frames, int &rowsc, int &colsc, int &rowsc_, int &colsc_, int &in_size, const Params &p) {
 
     cv::VideoCapture cap(p.file_name);
     if(!cap.isOpened()) { // if not success, exit program
@@ -137,6 +146,8 @@ void read_input(cv::Mat *all_gray_frames, int &rowsc, int &colsc, int &in_size, 
 
         // Convert to grayscale
         cv::cvtColor(in_frame, gray_frame, cv::COLOR_BGR2GRAY);
+        rowsc_ = gray_frame.rows;
+        colsc_ = gray_frame.cols;
 
         // Image dimensions
         rowsc = ((gray_frame.rows - 2) / p.n_work_items) * p.n_work_items + 2;
@@ -144,7 +155,7 @@ void read_input(cv::Mat *all_gray_frames, int &rowsc, int &colsc, int &in_size, 
 
         // Use these row/cols to create a rectangle which will serve as our crop
         cv::Rect croppedArea(0, 0, colsc, rowsc);
-
+				
         // Crop the image and clone it. If it is not cloned, the layout does not change
         gray_frame = gray_frame(croppedArea).clone();
         in_size    = gray_frame.rows * gray_frame.cols * sizeof(unsigned char);
@@ -163,9 +174,14 @@ int main(int argc, char **argv) {
 
     // Initialize (part 1)
     timer.start("Initialization");
-    cv::Mat all_gray_frames[p.n_warmup + p.n_reps];
-    int     rowsc, colsc, in_size;
-    read_input(all_gray_frames, rowsc, colsc, in_size, p);
+    const int max_wi_gauss  = ocl.max_work_items(ocl.clKernel_gauss);
+    const int max_wi_sobel  = ocl.max_work_items(ocl.clKernel_sobel);
+    const int max_wi_nonmax = ocl.max_work_items(ocl.clKernel_nonmax);
+    const int max_wi_hyst   = ocl.max_work_items(ocl.clKernel_hyst);
+    const int n_frames = p.n_warmup + p.n_reps;
+    cv::Mat all_gray_frames[n_frames];
+    int     rowsc, colsc, rowsc_, colsc_, in_size;
+    read_input(all_gray_frames, rowsc, colsc, rowsc_, colsc_, in_size, p);
     timer.stop("Initialization");
 
     // Allocate buffers
@@ -185,13 +201,6 @@ int main(int argc, char **argv) {
     unsigned char *h_theta_cpu_proxy  = (unsigned char *)malloc(in_size);
     cl_mem         d_interm_gpu_proxy = clCreateBuffer(ocl.clContext, CL_MEM_READ_WRITE, in_size, NULL, &clStatus);
     cl_mem         d_theta_gpu_proxy  = clCreateBuffer(ocl.clContext, CL_MEM_READ_WRITE, in_size, NULL, &clStatus);
-    // TODO: why not allocate filters in SVM for OpenCL 2.0
-    float            h_gaus[3][3] = {{0.0625, 0.125, 0.0625}, {0.1250, 0.250, 0.1250}, {0.0625, 0.125, 0.0625}};
-    int              h_sobx[3][3] = {{-1, 0, 1}, {-2, 0, 2}, {-1, 0, 1}};
-    int              h_soby[3][3] = {{-1, -2, -1}, {0, 0, 0}, {1, 2, 1}};
-    cl_mem           d_gaus = clCreateBuffer(ocl.clContext, CL_MEM_READ_WRITE, 3 * 3 * sizeof(float), NULL, &clStatus);
-    cl_mem           d_sobx = clCreateBuffer(ocl.clContext, CL_MEM_READ_WRITE, 3 * 3 * sizeof(int), NULL, &clStatus);
-    cl_mem           d_soby = clCreateBuffer(ocl.clContext, CL_MEM_READ_WRITE, 3 * 3 * sizeof(int), NULL, &clStatus);
     std::atomic<int> next_frame;
     clFinish(ocl.clCommandQueue);
     ALLOC_ERR(h_in_out[CPU_PROXY], h_in_out[GPU_PROXY], h_interm_cpu_proxy, h_theta_cpu_proxy);
@@ -201,49 +210,36 @@ int main(int argc, char **argv) {
 
     // Initialize (part 2)
     timer.start("Initialization");
-    cv::Mat all_out_frames[p.n_warmup + p.n_reps];
-    for(int i = 0; i < p.n_warmup + p.n_reps; i++) {
+    cv::Mat all_out_frames[n_frames];
+    for(int i = 0; i < n_frames; i++) {
         all_out_frames[i] = all_gray_frames[i];
     }
-    Partitioner      partitioner = partitioner_create(p.n_warmup + p.n_reps, p.alpha);
     std::atomic_int *worklist    = (std::atomic_int *)malloc(sizeof(std::atomic_int));
     ALLOC_ERR(worklist);
-    if(partitioner.strategy == DYNAMIC_PARTITIONING) {
+    if(p.alpha < 0.0 || p.alpha > 1.0) { // Dynamic partitioning
         worklist[0].store(0);
     }
     next_frame.store(0);
     timer.stop("Initialization");
     timer.print("Initialization", 1);
 
-    // Copy to device
-    // TODO: why not allocate filters in SVM for OpenCL 2.0
-    timer.start("Copy To Device");
-    clStatus =
-        clEnqueueWriteBuffer(ocl.clCommandQueue, d_gaus, CL_TRUE, 0, 3 * 3 * sizeof(float), h_gaus, 0, NULL, NULL);
-    clStatus = clEnqueueWriteBuffer(ocl.clCommandQueue, d_sobx, CL_TRUE, 0, 3 * 3 * sizeof(int), h_sobx, 0, NULL, NULL);
-    clStatus = clEnqueueWriteBuffer(ocl.clCommandQueue, d_soby, CL_TRUE, 0, 3 * 3 * sizeof(int), h_soby, 0, NULL, NULL);
-    CL_ERR();
-    timer.stop("Copy To Device");
-    timer.print("Copy To Device", 1);
-
     timer.start("Total Proxies");
+    CoarseGrainPartitioner partitioner = partitioner_create(n_frames, p.alpha, worklist);
     std::vector<std::thread> proxy_threads;
     for(int proxy_tid = 0; proxy_tid < 2; proxy_tid++) {
         proxy_threads.push_back(std::thread([&, proxy_tid]() {
 
-            for(int task_id = cpu_first(&partitioner, proxy_tid, worklist); cpu_more(&partitioner, proxy_tid, task_id);
-                task_id     = cpu_next(&partitioner, task_id, 1 /*see note*/,
-                    worklist)) { // note: it must be 1 because there is one single proxy thread fetching frames for each device
+            if(proxy_tid == GPU_PROXY) {
 
-                cv::Mat gray_frame, out_frame;
+                for(int task_id = gpu_first(&partitioner); gpu_more(&partitioner); task_id = gpu_next(&partitioner)) {
 
-                // Next frame
-                gray_frame = all_gray_frames[task_id];
-                if(gray_frame.empty())
-                    continue;
-                memcpy(h_in_out[proxy_tid], gray_frame.data, in_size);
+                    cv::Mat gray_frame, out_frame;
 
-                if(proxy_tid == GPU_PROXY) {
+                    // Next frame
+                    gray_frame = all_gray_frames[task_id];
+                    if(gray_frame.empty())
+                        continue;
+                    memcpy(h_in_out[proxy_tid], gray_frame.data, in_size);
 
 #ifndef OCL_2_0
                     // Copy to Device
@@ -258,11 +254,11 @@ int main(int argc, char **argv) {
                     timer.start("GPU Proxy: Kernel");
                     // Execution configuration
                     size_t ls[2]     = {(size_t)p.n_work_items, (size_t)p.n_work_items};
-                    size_t gs[2]     = {(size_t)(rowsc - 2), (size_t)(colsc - 2)};
+                    size_t gs[2]     = {(size_t)(colsc - 2), (size_t)(rowsc - 2)};
                     size_t offset[2] = {(size_t)1, (size_t)1};
 
-// GAUSSIAN KERNEL
-// Set arguments
+                    // GAUSSIAN KERNEL
+                    // Set arguments
 #ifdef OCL_2_0
                     clSetKernelArgSVMPointer(ocl.clKernel_gauss, 0, d_in_out);
 #else
@@ -271,8 +267,9 @@ int main(int argc, char **argv) {
                     clSetKernelArg(ocl.clKernel_gauss, 1, sizeof(cl_mem), &d_interm_gpu_proxy);
                     clSetKernelArg(ocl.clKernel_gauss, 2, sizeof(int), &rowsc);
                     clSetKernelArg(ocl.clKernel_gauss, 3, sizeof(int), &colsc);
-                    clSetKernelArg(ocl.clKernel_gauss, 4, (L_SIZE + 2) * (L_SIZE + 2) * sizeof(int), NULL);
-                    clSetKernelArg(ocl.clKernel_gauss, 5, sizeof(cl_mem), &d_gaus);
+                    clSetKernelArg(ocl.clKernel_gauss, 4, (p.n_work_items + 2) * (p.n_work_items + 2) * sizeof(int), NULL);
+                    assert(ls[0]*ls[1] <= max_wi_gauss && 
+                        "The work-group size is greater than the maximum work-group size that can be used to execute gaussian kernel");
                     // Kernel launch
                     clStatus = clEnqueueNDRangeKernel(
                         ocl.clCommandQueue, ocl.clKernel_gauss, 2, offset, gs, ls, 0, NULL, NULL);
@@ -289,16 +286,16 @@ int main(int argc, char **argv) {
                     clSetKernelArg(ocl.clKernel_sobel, 2, sizeof(cl_mem), &d_theta_gpu_proxy);
                     clSetKernelArg(ocl.clKernel_sobel, 3, sizeof(int), &rowsc);
                     clSetKernelArg(ocl.clKernel_sobel, 4, sizeof(int), &colsc);
-                    clSetKernelArg(ocl.clKernel_sobel, 5, (L_SIZE + 2) * (L_SIZE + 2) * sizeof(int), NULL);
-                    clSetKernelArg(ocl.clKernel_sobel, 6, sizeof(cl_mem), &d_sobx);
-                    clSetKernelArg(ocl.clKernel_sobel, 7, sizeof(cl_mem), &d_soby);
+                    clSetKernelArg(ocl.clKernel_sobel, 5, (p.n_work_items + 2) * (p.n_work_items + 2) * sizeof(int), NULL);
+                    assert(ls[0]*ls[1] <= max_wi_sobel && 
+                        "The work-group size is greater than the maximum work-group size that can be used to execute sobel kernel");
                     // Kernel launch
                     clStatus = clEnqueueNDRangeKernel(
                         ocl.clCommandQueue, ocl.clKernel_sobel, 2, offset, gs, ls, 0, NULL, NULL);
                     CL_ERR();
 
-// NON-MAXIMUM SUPPRESSION KERNEL
-// Set arguments
+                    // NON-MAXIMUM SUPPRESSION KERNEL
+                    // Set arguments
 #ifdef OCL_2_0
                     clSetKernelArgSVMPointer(ocl.clKernel_nonmax, 0, d_in_out);
 #else
@@ -308,12 +305,13 @@ int main(int argc, char **argv) {
                     clSetKernelArg(ocl.clKernel_nonmax, 2, sizeof(cl_mem), &d_theta_gpu_proxy);
                     clSetKernelArg(ocl.clKernel_nonmax, 3, sizeof(int), &rowsc);
                     clSetKernelArg(ocl.clKernel_nonmax, 4, sizeof(int), &colsc);
-                    clSetKernelArg(ocl.clKernel_nonmax, 5, (L_SIZE + 2) * (L_SIZE + 2) * sizeof(int), NULL);
+                    clSetKernelArg(ocl.clKernel_nonmax, 5, (p.n_work_items + 2) * (p.n_work_items + 2) * sizeof(int), NULL);
+                    assert(ls[0]*ls[1] <= max_wi_nonmax && 
+                        "The work-group size is greater than the maximum work-group size that can be used to execute non-maximum suppression kernel");
                     // Kernel launch
                     clStatus = clEnqueueNDRangeKernel(
                         ocl.clCommandQueue, ocl.clKernel_nonmax, 2, offset, gs, ls, 0, NULL, NULL);
                     CL_ERR();
-                    //clFinish(ocl.clCommandQueue);
 
                     // HYSTERESIS KERNEL
                     // Set arguments
@@ -325,6 +323,8 @@ int main(int argc, char **argv) {
 #endif
                     clSetKernelArg(ocl.clKernel_hyst, 2, sizeof(int), &rowsc);
                     clSetKernelArg(ocl.clKernel_hyst, 3, sizeof(int), &colsc);
+                    assert(ls[0]*ls[1] <= max_wi_hyst && 
+                        "The work-group size is greater than the maximum work-group size that can be used to execute hysteresis kernel");
                     // Kernel launch
                     clStatus =
                         clEnqueueNDRangeKernel(ocl.clCommandQueue, ocl.clKernel_hyst, 2, offset, gs, ls, 0, NULL, NULL);
@@ -342,49 +342,69 @@ int main(int argc, char **argv) {
                     timer.stop("GPU Proxy: Copy Back");
 #endif
 
-                } else if(proxy_tid == CPU_PROXY) {
+                    out_frame = cv::Mat(rowsc, colsc, CV_8UC1);
+                    memcpy(out_frame.data, h_in_out[proxy_tid], in_size);
+                    all_out_frames[task_id] = out_frame;
+                    
+                }
+
+            } else if(proxy_tid == CPU_PROXY) {
+
+                for(int task_id = cpu_first(&partitioner); cpu_more(&partitioner); task_id = cpu_next(&partitioner)) {
+
+                    cv::Mat gray_frame, out_frame;
+
+                    // Next frame
+                    gray_frame = all_gray_frames[task_id];
+                    if(gray_frame.empty())
+                        continue;
+                    memcpy(h_in_out[proxy_tid], gray_frame.data, in_size);
+
                     // Launch CPU threads
                     timer.start("CPU Proxy: Kernel");
                     std::thread main_thread(run_cpu_threads, h_in_out[proxy_tid], h_interm_cpu_proxy, h_theta_cpu_proxy,
                         rowsc, colsc, p.n_threads, task_id);
                     main_thread.join();
                     timer.stop("CPU Proxy: Kernel");
+            
+                    out_frame = cv::Mat(rowsc, colsc, CV_8UC1);
+                    memcpy(out_frame.data, h_in_out[proxy_tid], in_size);
+                    all_out_frames[task_id] = out_frame;
+
                 }
 
-                out_frame = cv::Mat(rowsc, colsc, CV_8UC1);
-                memcpy(out_frame.data, h_in_out[proxy_tid], in_size);
-                all_out_frames[task_id] = out_frame;
             }
+
         }));
     }
     std::for_each(proxy_threads.begin(), proxy_threads.end(), [](std::thread &t) { t.join(); });
     clFinish(ocl.clCommandQueue);
     timer.stop("Total Proxies");
     timer.print("Total Proxies", 1);
-    cout << "CPU Proxy:" << endl;
-    cout << "\t";
+    printf("CPU Proxy:\n");
+    printf("\t");
     timer.print("CPU Proxy: Kernel", 1);
-    cout << "GPU Proxy:" << endl;
-    cout << "\t";
+    printf("GPU Proxy:\n");
+    printf("\t");
     timer.print("GPU Proxy: Copy To Device", 1);
-    cout << "\t";
+    printf("\t");
     timer.print("GPU Proxy: Kernel", 1);
-    cout << "\t";
+    printf("\t");
     timer.print("GPU Proxy: Copy Back", 1);
 
-// Display the result
-#if DISPLAY // Don't remove!!!
-    for(int task_id = 0; task_id < p.n_warmup + p.n_reps; task_id++) {
-        cv::Mat out_frame = all_out_frames[task_id];
-        if(!out_frame.empty())
-            imshow("cedd", out_frame);
-        if(cv::waitKey(30) >= 0)
-            break;
+    // Display the result
+    if(p.display){
+        for(int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
+            cv::Mat out_frame = all_out_frames[rep];
+            if(!out_frame.empty())
+                imshow("canny", out_frame);
+            if(cv::waitKey(30) >= 0)
+                break;
+        }
     }
-#endif
 
     // Verify answer
-    verify(all_out_frames, in_size, p.comparison_file, p.n_warmup + p.n_reps, rowsc, colsc);
+    verify(all_out_frames, in_size, p.comparison_file, p.n_warmup + p.n_reps, rowsc, colsc, rowsc_, colsc_);
 
     // Release buffers
     timer.start("Deallocation");
@@ -399,9 +419,6 @@ int main(int argc, char **argv) {
     free(h_theta_cpu_proxy);
     clStatus = clReleaseMemObject(d_interm_gpu_proxy);
     clStatus = clReleaseMemObject(d_theta_gpu_proxy);
-    clStatus = clReleaseMemObject(d_gaus);
-    clStatus = clReleaseMemObject(d_sobx);
-    clStatus = clReleaseMemObject(d_soby);
     CL_ERR();
     free(worklist);
     ocl.release();

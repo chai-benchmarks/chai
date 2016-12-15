@@ -36,7 +36,6 @@
 #include "kernel.h"
 #include "support/common.h"
 #include "support/ocl.h"
-#include "support/partitioner.h"
 #include "support/timer.h"
 #include "support/verify.h"
 
@@ -94,22 +93,32 @@ struct Params {
             case 'e': error_threshold       = atoi(optarg); break;
             case 'c': convergence_threshold = atof(optarg); break;
             default:
-                cerr << "\nUnrecognized option!" << endl;
+                fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
                 exit(0);
             }
         }
-        if(alpha > 0.0 && alpha < 1.0) {
+        if(alpha == 0.0) {
+            assert(n_work_items > 0 && "Invalid # of device work-items!");
+            assert(n_work_groups > 0 && "Invalid # of device work-groups!");
+        } else if(alpha == 1.0) {
+            assert(n_threads > 0 && "Invalid # of host threads!");
+        } else if(alpha > 0.0 && alpha < 1.0) {
             assert(n_work_items > 0 && "Invalid # of device work-items!");
             assert(n_work_groups > 0 && "Invalid # of device work-groups!");
             assert(n_threads > 0 && "Invalid # of host threads!");
         } else {
-            assert((n_work_items > 0 && n_work_groups > 0 || n_threads > 0) && "Invalid # of CPU + GPU workers!");
+#ifdef OCL_2_0
+            assert((n_work_items > 0 && n_work_groups > 0 || n_threads > 0) && "Invalid # of host + device workers!");
+#else
+            assert(0 && "Illegal value for -a");
+#endif
         }
     }
 
     void usage() {
-        cerr << "\nUsage:  ./rscd [options]"
+        fprintf(stderr,
+                "\nUsage:  ./rscd [options]"
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
@@ -123,13 +132,18 @@ struct Params {
                 "\n"
                 "\nData-partitioning-specific options:"
                 "\n    -a <A>    fraction of input elements to process on host (default=0.2)"
+#ifdef OCL_2_0
+                "\n              NOTE: Dynamic partitioning used when <A> is not between 0.0 and 1.0"
+#else
+                "\n              NOTE: <A> must be between 0.0 and 1.0"
+#endif
                 "\n"
                 "\nBenchmark-specific options:"
                 "\n    -f <F>    input file name (default=input/vectors.csv)"
                 "\n    -m <M>    maximum # of iterations (default=2000)"
                 "\n    -e <E>    error threshold (default=3)"
                 "\n    -c <C>    convergence threshold (default=0.75)"
-                "\n";
+                "\n");
     }
 };
 
@@ -246,8 +260,8 @@ int main(int argc, char **argv) {
 
     // Initialize
     timer.start("Initialization");
+    const int max_wi = ocl.max_work_items(ocl.clKernel);
     read_input(h_flow_vector_array, h_random_numbers, p);
-    Partitioner partitioner = partitioner_create(p.max_iter, p.alpha);
     clFinish(ocl.clCommandQueue);
     timer.stop("Initialization");
     timer.print("Initialization", 1);
@@ -280,7 +294,7 @@ int main(int argc, char **argv) {
         memset((void *)h_model_param_local, 0, 4 * p.max_iter * sizeof(float));
 #ifdef OCL_2_0
         h_g_out_id[0].store(0);
-        if(partitioner.strategy == DYNAMIC_PARTITIONING) {
+        if(p.alpha < 0.0 || p.alpha > 1.0) { // Dynamic partitioning
             worklist[0].store(0);
         }
 #else
@@ -300,51 +314,46 @@ int main(int argc, char **argv) {
         if(rep >= p.n_warmup)
             timer.start("Kernel");
 
-// Launch GPU threads
-#ifdef OCL_2_0
-        clSetKernelArgSVMPointer(ocl.clKernel, 0, d_model_param_local);
-        clSetKernelArgSVMPointer(ocl.clKernel, 1, d_flow_vector_array);
-#else
-        clSetKernelArg(ocl.clKernel, 0, sizeof(cl_mem), &d_model_param_local);
-        clSetKernelArg(ocl.clKernel, 1, sizeof(cl_mem), &d_flow_vector_array);
-#endif
-        clSetKernelArg(ocl.clKernel, 2, sizeof(int), &n_flow_vectors);
-#ifdef OCL_2_0
-        clSetKernelArgSVMPointer(ocl.clKernel, 3, d_random_numbers);
-#else
-        clSetKernelArg(ocl.clKernel, 3, sizeof(cl_mem), &d_random_numbers);
-#endif
+        // Launch GPU threads
+        clSetKernelArg(ocl.clKernel, 0, sizeof(int), &n_flow_vectors);
+        clSetKernelArg(ocl.clKernel, 1, sizeof(int), &p.max_iter);
+        clSetKernelArg(ocl.clKernel, 2, sizeof(int), &p.error_threshold);
+        clSetKernelArg(ocl.clKernel, 3, sizeof(float), &p.convergence_threshold);
         clSetKernelArg(ocl.clKernel, 4, sizeof(int), &p.max_iter);
-        clSetKernelArg(ocl.clKernel, 5, sizeof(int), &p.error_threshold);
-        clSetKernelArg(ocl.clKernel, 6, sizeof(float), &p.convergence_threshold);
+        clSetKernelArg(ocl.clKernel, 5, sizeof(float), &p.alpha);
 #ifdef OCL_2_0
-        clSetKernelArgSVMPointer(ocl.clKernel, 7, d_g_out_id);
-        clSetKernelArg(ocl.clKernel, 8, sizeof(std::atomic_int), NULL);
+        clSetKernelArgSVMPointer(ocl.clKernel, 6, d_model_param_local);
+        clSetKernelArgSVMPointer(ocl.clKernel, 7, d_flow_vector_array);
+        clSetKernelArgSVMPointer(ocl.clKernel, 8, d_random_numbers);
         clSetKernelArgSVMPointer(ocl.clKernel, 9, d_model_candidate);
         clSetKernelArgSVMPointer(ocl.clKernel, 10, d_outliers_candidate);
+        clSetKernelArgSVMPointer(ocl.clKernel, 11, d_g_out_id);
+        clSetKernelArg(ocl.clKernel, 12, sizeof(std::atomic_int), NULL);
+        clSetKernelArgSVMPointer(ocl.clKernel, 13, worklist);
+        clSetKernelArg(ocl.clKernel, 14, sizeof(int), NULL);
 #else
-        clSetKernelArg(ocl.clKernel, 7, sizeof(cl_mem), &d_g_out_id);
-        clSetKernelArg(ocl.clKernel, 8, sizeof(int), NULL);
+        clSetKernelArg(ocl.clKernel, 6, sizeof(cl_mem), &d_model_param_local);
+        clSetKernelArg(ocl.clKernel, 7, sizeof(cl_mem), &d_flow_vector_array);
+        clSetKernelArg(ocl.clKernel, 8, sizeof(cl_mem), &d_random_numbers);
         clSetKernelArg(ocl.clKernel, 9, sizeof(cl_mem), &d_model_candidate);
         clSetKernelArg(ocl.clKernel, 10, sizeof(cl_mem), &d_outliers_candidate);
-#endif
-        clSetKernelArg(ocl.clKernel, 11, sizeof(Partitioner), &partitioner);
+        clSetKernelArg(ocl.clKernel, 11, sizeof(cl_mem), &d_g_out_id);
         clSetKernelArg(ocl.clKernel, 12, sizeof(int), NULL);
-#ifdef OCL_2_0
-        clSetKernelArgSVMPointer(ocl.clKernel, 13, worklist);
 #endif
 
         // Kernel launch
         if(p.n_work_groups > 0) {
             size_t ls[1] = {(size_t)p.n_work_items};
             size_t gs[1] = {(size_t)p.n_work_groups * p.n_work_items};
+            assert(ls[0] <= max_wi && 
+                "The work-group size is greater than the maximum work-group size that can be used to execute this kernel");
             clStatus     = clEnqueueNDRangeKernel(ocl.clCommandQueue, ocl.clKernel, 1, NULL, gs, ls, 0, NULL, NULL);
             CL_ERR();
         }
         // Launch CPU threads
         std::thread main_thread(run_cpu_threads, h_model_candidate, h_outliers_candidate, h_model_param_local,
             h_flow_vector_array, n_flow_vectors, h_random_numbers, p.max_iter, p.error_threshold,
-            p.convergence_threshold, h_g_out_id, p.n_threads, partitioner
+            p.convergence_threshold, h_g_out_id, p.n_threads, p.max_iter, p.alpha
 #ifdef OCL_2_0
             ,
             worklist);

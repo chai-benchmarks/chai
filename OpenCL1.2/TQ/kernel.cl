@@ -41,41 +41,41 @@
 #include "support/common.h"
 
 // OpenCL kernel ------------------------------------------------------------------------------------------
-__kernel void TaskQueue_gpu(__global task_t *ptr_queue, __global int *ptr_data, __global int *consumed, int iterations,
+__kernel void TaskQueue_gpu(__global task_t *queue, __global int *data, __global int *consumed, int iterations,
     int offset, int gpuQueueSize, __local task_t *t, __local int *next) {
 
     const int tid       = get_local_id(0);
     const int tileid    = get_group_id(0);
-    int       tile_size = get_local_size(0);
+    const int tile_size = get_local_size(0);
 
     // Fetch task
     if(tid == 0) {
         *next = atomic_add(consumed, 1);
-        t->id = ptr_queue[*next].id;
-        t->op = ptr_queue[*next].op;
+        t->id = queue[*next].id;
+        t->op = queue[*next].op;
     }
     barrier(CLK_LOCAL_MEM_FENCE); // It can be removed if work-group = wavefront
     while(*next < gpuQueueSize) {
         // Compute task
         if(t->op == SIGNAL_WORK_KERNEL) {
             for(int i = 0; i < iterations; i++) {
-                ptr_data[(t->id - offset) * tile_size + tid] += tile_size;
+                data[(t->id - offset) * tile_size + tid] += tile_size;
             }
 
-            ptr_data[(t->id - offset) * tile_size + tid] += t->id;
+            data[(t->id - offset) * tile_size + tid] += t->id;
         }
         if(t->op == SIGNAL_NOTWORK_KERNEL) {
             for(int i = 0; i < 1; i++) {
-                ptr_data[(t->id - offset) * tile_size + tid] += tile_size;
+                data[(t->id - offset) * tile_size + tid] += tile_size;
             }
 
-            ptr_data[(t->id - offset) * tile_size + tid] += t->id;
+            data[(t->id - offset) * tile_size + tid] += t->id;
         }
         if(tid == 0) {
             *next = atomic_add(consumed, 1);
             // Fetch task
-            t->id = ptr_queue[*next].id;
-            t->op = ptr_queue[*next].op;
+            t->id = queue[*next].id;
+            t->op = queue[*next].op;
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }

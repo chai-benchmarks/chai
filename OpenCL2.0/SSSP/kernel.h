@@ -36,7 +36,7 @@
 #include <atomic>
 #include "support/common.h"
 
-void run_cpu_threads(Node *h_graph_nodes, Edge *h_graph_edges, std::atomic_int *ptr_cost, std::atomic_int *ptr_color,
-    int *ptr_q1, int *ptr_q2, int *ptr_num_t, std::atomic_int *ptr_head, std::atomic_int *ptr_tail,
-    std::atomic_int *ptr_threads_end, std::atomic_int *ptr_threads_run, std::atomic_int *ptr_gray_shade,
-    int num_threads, int max_wg, int wg_size, int LIMIT, int GPU);
+void run_cpu_threads(Node *h_graph_nodes, Edge *h_graph_edges, std::atomic_int *cost, std::atomic_int *color,
+    int *q1, int *q2, int *n_t, std::atomic_int *head, std::atomic_int *tail,
+    std::atomic_int *threads_end, std::atomic_int *threads_run, std::atomic_int *gray_shade,
+    int n_threads, int max_wg, int wg_size, int LIMIT, int GPU);

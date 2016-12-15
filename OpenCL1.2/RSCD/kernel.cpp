@@ -34,6 +34,7 @@
  */
 
 #include "kernel.h"
+#include "support/partitioner.h"
 #include <math.h>
 #include <thread>
 #include <vector>
@@ -68,28 +69,29 @@ int gen_model_param(int x1, int y1, int vx1, int vy1, int x2, int y2, int vx2, i
 // CPU threads--------------------------------------------------------------------------------------
 void run_cpu_threads(int *model_candidate, int *outliers_candidate, float *model_param_local, flowvector *flowvectors,
     int flowvector_count, int *random_numbers, int max_iter, int error_threshold, float convergence_threshold,
-    std::atomic_int *g_out_id, int num_threads, Partitioner p
+    std::atomic_int *g_out_id, int n_threads, int n_tasks, float alpha
 #ifdef OCL_2_0
-    ,
-    std::atomic_int *wl) {
-#else
-    ) {
+    , std::atomic_int *worklist
 #endif
+    ) {
 
     std::vector<std::thread> cpu_threads;
-    for(int k = 0; k < num_threads; k++) {
+    for(int k = 0; k < n_threads; k++) {
         cpu_threads.push_back(std::thread([=]() {
+
+#ifdef OCL_2_0
+            Partitioner p = partitioner_create(n_tasks, alpha, k, n_threads, worklist);
+#else
+            Partitioner p = partitioner_create(n_tasks, alpha, k, n_threads);
+#endif
 
             flowvector fv[2];
             float      vx_error, vy_error;
             int        outlier_local_count = 0;
 
-// Each thread performs one iteration
-#ifdef OCL_2_0
-            for(int iter = cpu_first(&p, k, wl); cpu_more(&p, iter); iter = cpu_next(&p, iter, num_threads, wl)) {
-#else
-            for(int iter = cpu_first(&p, k); cpu_more(&p, iter); iter = cpu_next(&p, iter, num_threads)) {
-#endif
+            // Each thread performs one iteration
+            for(int iter = cpu_first(&p); cpu_more(&p); iter = cpu_next(&p)) {
+
                 // Obtain model parameters for First Order Flow - gen_firstOrderFlow_model
                 float *model_param =
                     &model_param_local

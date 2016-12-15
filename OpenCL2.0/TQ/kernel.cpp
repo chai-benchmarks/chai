@@ -48,52 +48,52 @@
 // 4: queue[end] ← task
 // 5: end ← (end + 1) mod size
 //----------------------------------------------------------------------------
-void host_insert_tasks(task_t *queues, task_t *task_pool, std::atomic_int *num_consumed_tasks,
-    std::atomic_int *num_written_tasks, std::atomic_int *num_task_in_queue, int *last_queue, int *num_tasks,
-    int gpuQueueSize, int *offset) {
-    int i                       = *last_queue;
-    int total_num_tasks         = *num_tasks;
-    int remaining_num_tasks     = *num_tasks;
-    int num_tasks_to_write_next = (remaining_num_tasks > gpuQueueSize) ? gpuQueueSize : remaining_num_tasks;
-    *num_tasks                  = num_tasks_to_write_next;
+void host_insert_tasks(task_t *queues, task_t *task_pool, std::atomic_int *n_consumed_tasks,
+    std::atomic_int *n_written_tasks, std::atomic_int *n_task_in_queue, int *last_queue, int *n_tasks,
+    int gpu_queue_size, int *offset) {
+    int i                     = *last_queue;
+    int n_total_tasks         = *n_tasks;
+    int n_remaining_tasks     = *n_tasks;
+    int n_tasks_to_write_next = (n_remaining_tasks > gpu_queue_size) ? gpu_queue_size : n_remaining_tasks;
+    *n_tasks                  = n_tasks_to_write_next;
 #if PRINT
-    printf("Inserting Tasks (%d to insert)\t \n", num_tasks_to_write_next);
+    printf("Inserting Tasks (%d to insert)\t \n", n_tasks_to_write_next);
 #endif
     do {
 #if PRINT
-        printf("Loop iteration... i = %d, consumed=%d, written=%d\n", i, num_consumed_tasks[i].load(),
-            num_written_tasks[i].load());
+        printf("Loop iteration... i = %d, consumed=%d, written=%d\n", i, n_consumed_tasks[i].load(),
+            n_written_tasks[i].load());
 #endif
-        if(num_consumed_tasks[i].load() == num_written_tasks[i].load()) {
+        if(n_consumed_tasks[i].load() == n_written_tasks[i].load()) {
 #if PRINT
-            printf("Inserting Tasks... %d (%d) in queue %d\n", remaining_num_tasks, *num_tasks, i);
+            printf("Inserting Tasks... %d (%d) in queue %d\n", n_remaining_tasks, *n_tasks, i);
 #endif
             // Insert tasks in queue i
-            memcpy(&queues[i * gpuQueueSize], &task_pool[(*offset) + total_num_tasks - remaining_num_tasks],
-                (*num_tasks) * sizeof(task_t));
+            memcpy(&queues[i * gpu_queue_size], &task_pool[(*offset) + n_total_tasks - n_remaining_tasks],
+                (*n_tasks) * sizeof(task_t));
             // Update number of tasks in queue i
-            //num_task_in_queue[i].store(*num_tasks); // JGL: This does not really synchronizes
-            (&num_task_in_queue[i])->store(*num_tasks);
+            //n_task_in_queue[i].store(*n_tasks); // JGL: This does not really synchronizes
+            (&n_task_in_queue[i])->store(*n_tasks);
             // Total number of tasks written in queue i
-            //num_written_tasks[i].fetch_add(*num_tasks); // JGL: This does not really synchronizes
-            (&num_written_tasks[i])->fetch_add(*num_tasks);
+            //n_written_tasks[i].fetch_add(*n_tasks); // JGL: This does not really synchronizes
+            (&n_written_tasks[i])->fetch_add(*n_tasks);
             // Next queue
             i = (i + 1) % NUM_TASK_QUEUES;
             // Remaining tasks
-            remaining_num_tasks -= num_tasks_to_write_next;
-            num_tasks_to_write_next = (remaining_num_tasks > gpuQueueSize) ? gpuQueueSize : remaining_num_tasks;
-            *num_tasks              = num_tasks_to_write_next;
+            n_remaining_tasks -= n_tasks_to_write_next;
+            n_tasks_to_write_next = (n_remaining_tasks > gpu_queue_size) ? gpu_queue_size : n_remaining_tasks;
+            *n_tasks              = n_tasks_to_write_next;
         } else {
             i = (i + 1) % NUM_TASK_QUEUES;
         }
-    } while(num_tasks_to_write_next > 0);
+    } while(n_tasks_to_write_next > 0);
 
     *last_queue = i;
 }
 
-void run_cpu_threads(int n_threads, task_t *ptr_queues, std::atomic_int *ptr_num_task_in_queue,
-    std::atomic_int *ptr_num_written_tasks, std::atomic_int *ptr_num_consumed_tasks, task_t *ptr_task_pool,
-    int *ptr_data, int gpuQueueSize, int *ptr_offset, int *ptr_last_queue, int *ptr_num_tasks, int tpi, int poolSize,
+void run_cpu_threads(int n_threads, task_t *queues, std::atomic_int *n_task_in_queue,
+    std::atomic_int *n_written_tasks, std::atomic_int *n_consumed_tasks, task_t *task_pool,
+    int *data, int gpu_queue_size, int *offset, int *last_queue, int *n_tasks, int tpi, int poolSize,
     int n_work_groups) {
 ///////////////// Run CPU worker threads /////////////////////////////////
 #if PRINT
@@ -108,54 +108,54 @@ void run_cpu_threads(int n_threads, task_t *ptr_queues, std::atomic_int *ptr_num
             int maxConcurrentBlocks = n_work_groups;
 
             // Insert tasks in queue
-            host_insert_tasks(ptr_queues, ptr_task_pool, ptr_num_consumed_tasks, ptr_num_written_tasks,
-                ptr_num_task_in_queue, ptr_last_queue, ptr_num_tasks, gpuQueueSize, ptr_offset);
-            *ptr_offset += tpi;
+            host_insert_tasks(queues, task_pool, n_consumed_tasks, n_written_tasks,
+                n_task_in_queue, last_queue, n_tasks, gpu_queue_size, offset);
+            *offset += tpi;
 #if PRINT
             printf("\nTask inserted...\n");
             for(int i = 0; i < NUM_TASK_QUEUES; i++) {
-                int task_in_queue = (ptr_num_task_in_queue + i)->load();
-                int written       = (ptr_num_written_tasks + i)->load();
-                int consumed      = (ptr_num_consumed_tasks + i)->load();
-                printf("Queue = %i, written = %i, task_in_queue = %i, consumed = %i, ptr_offset = %i\n", i, written,
-                    task_in_queue, consumed, *ptr_offset);
+                int task_in_queue = (n_task_in_queue + i)->load();
+                int written       = (n_written_tasks + i)->load();
+                int consumed      = (n_consumed_tasks + i)->load();
+                printf("Queue = %i, written = %i, task_in_queue = %i, consumed = %i, offset = %i\n", i, written,
+                    task_in_queue, consumed, *offset);
             }
 #endif
 
-            while(poolSize > *ptr_offset) {
-                *ptr_num_tasks = tpi;
+            while(poolSize > *offset) {
+                *n_tasks = tpi;
                 // Insert tasks in queue
-                host_insert_tasks(ptr_queues, ptr_task_pool, ptr_num_consumed_tasks, ptr_num_written_tasks,
-                    ptr_num_task_in_queue, ptr_last_queue, ptr_num_tasks, gpuQueueSize, ptr_offset);
-                *ptr_offset += tpi;
+                host_insert_tasks(queues, task_pool, n_consumed_tasks, n_written_tasks,
+                    n_task_in_queue, last_queue, n_tasks, gpu_queue_size, offset);
+                *offset += tpi;
 #if PRINT
                 printf("\nTask inserted (second loop)...\n");
                 for(int i = 0; i < NUM_TASK_QUEUES; i++) {
-                    int task_in_queue = (ptr_num_task_in_queue + i)->load();
-                    int written       = (ptr_num_written_tasks + i)->load();
-                    int consumed      = (ptr_num_consumed_tasks + i)->load();
-                    printf("Queue = %i, written = %i, task_in_queue = %i, consumed = %i, ptr_offset = %i\n", i, written,
-                        task_in_queue, consumed, *ptr_offset);
+                    int task_in_queue = (n_task_in_queue + i)->load();
+                    int written       = (n_written_tasks + i)->load();
+                    int consumed      = (n_consumed_tasks + i)->load();
+                    printf("Queue = %i, written = %i, task_in_queue = %i, consumed = %i, offset = %i\n", i, written,
+                        task_in_queue, consumed, *offset);
                 }
 #endif
             }
             // Create stop tasks
             for(int i = 0; i < maxConcurrentBlocks; i++) {
-                (ptr_task_pool + i)->id = -1;
-                (ptr_task_pool + i)->op = SIGNAL_STOP_KERNEL;
+                (task_pool + i)->id = -1;
+                (task_pool + i)->op = SIGNAL_STOP_KERNEL;
             }
-            *ptr_num_tasks = maxConcurrentBlocks;
-            *ptr_offset    = 0;
+            *n_tasks = maxConcurrentBlocks;
+            *offset    = 0;
             // Insert stop tasks in queue
-            host_insert_tasks(ptr_queues, ptr_task_pool, ptr_num_consumed_tasks, ptr_num_written_tasks,
-                ptr_num_task_in_queue, ptr_last_queue, ptr_num_tasks, gpuQueueSize, ptr_offset);
+            host_insert_tasks(queues, task_pool, n_consumed_tasks, n_written_tasks,
+                n_task_in_queue, last_queue, n_tasks, gpu_queue_size, offset);
 #if PRINT
             for(int i = 0; i < NUM_TASK_QUEUES; i++) {
-                int task_in_queue = (ptr_num_task_in_queue + i)->load();
-                int written       = (ptr_num_written_tasks + i)->load();
-                int consumed      = (ptr_num_consumed_tasks + i)->load();
-                printf("STOP TASKS -> Queue = %i, written = %i, task_in_queue = %i, consumed = %i, ptr_offset = %i\n",
-                    i, written, task_in_queue, consumed, *ptr_offset);
+                int task_in_queue = (n_task_in_queue + i)->load();
+                int written       = (n_written_tasks + i)->load();
+                int consumed      = (n_consumed_tasks + i)->load();
+                printf("STOP TASKS -> Queue = %i, written = %i, task_in_queue = %i, consumed = %i, offset = %i\n",
+                    i, written, task_in_queue, consumed, *offset);
             }
 #endif
 

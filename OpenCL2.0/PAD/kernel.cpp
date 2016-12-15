@@ -34,33 +34,35 @@
  */
 
 #include "kernel.h"
+#include "support/partitioner.h"
 #include <math.h>
 #include <thread>
 #include <vector>
 #include <algorithm>
 
 // CPU threads--------------------------------------------------------------------------------------
-void run_cpu_threads(T *matrix_out, T *matrix, std::atomic_int *flags, int n, int m, int pad, int num_threads, int ldim,
-    Partitioner p
+void run_cpu_threads(T *matrix_out, T *matrix, std::atomic_int *flags, int n, int m, int pad, int n_threads, int ldim, int n_tasks, float alpha
 #ifdef OCL_2_0
-    ,
-    std::atomic_int *wl) {
-#else
-    ) {
+    , std::atomic_int *worklist
 #endif
+    ) {
 
     const int                REGS_CPU = REGS * ldim;
     std::vector<std::thread> cpu_threads;
-    for(int i = 0; i < num_threads; i++) {
+    for(int i = 0; i < n_threads; i++) {
+    
         cpu_threads.push_back(std::thread([=]() {
+
+#ifdef OCL_2_0
+            Partitioner p = partitioner_create(n_tasks, alpha, i, n_threads, worklist);
+#else
+            Partitioner p = partitioner_create(n_tasks, alpha, i, n_threads);
+#endif
+
             const int matrix_size       = m * (n + pad);
             const int matrix_size_align = (matrix_size + ldim * REGS - 1) / (ldim * REGS) * (ldim * REGS);
 
-#ifdef OCL_2_0
-            for(int my_s = cpu_first(&p, i, wl); cpu_more(&p, my_s); my_s = cpu_next(&p, my_s, num_threads, wl)) {
-#else
-            for(int my_s = cpu_first(&p, i); cpu_more(&p, my_s); my_s = cpu_next(&p, my_s, num_threads)) {
-#endif
+            for(int my_s = cpu_first(&p); cpu_more(&p); my_s = cpu_next(&p)) {
 
                 // Declare on-chip memory
                 T   reg[REGS_CPU];

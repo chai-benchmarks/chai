@@ -36,7 +36,6 @@
 #include "kernel.h"
 #include "support/common.h"
 #include "support/ocl.h"
-#include "support/partitioner.h"
 #include "support/timer.h"
 #include "support/verify.h"
 
@@ -90,22 +89,32 @@ struct Params {
             case 'n': in_size           = atoi(optarg); break;
             case 'c': compaction_factor = atoi(optarg); break;
             default:
-                cerr << "\nUnrecognized option!" << endl;
+                fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
                 exit(0);
             }
         }
-        if(alpha > 0.0 && alpha < 1.0) {
+        if(alpha == 0.0) {
+            assert(n_work_items > 0 && "Invalid # of device work-items!");
+            assert(n_work_groups > 0 && "Invalid # of device work-groups!");
+        } else if(alpha == 1.0) {
+            assert(n_threads > 0 && "Invalid # of host threads!");
+        } else if(alpha > 0.0 && alpha < 1.0) {
             assert(n_work_items > 0 && "Invalid # of device work-items!");
             assert(n_work_groups > 0 && "Invalid # of device work-groups!");
             assert(n_threads > 0 && "Invalid # of host threads!");
         } else {
-            assert((n_work_items > 0 && n_work_groups > 0 || n_threads > 0) && "Invalid # of CPU + GPU workers!");
+#ifdef OCL_2_0
+            assert((n_work_items > 0 && n_work_groups > 0 || n_threads > 0) && "Invalid # of host + device workers!");
+#else
+            assert(0 && "Illegal value for -a");
+#endif
         }
     }
 
     void usage() {
-        cerr << "\nUsage:  ./sc [options]"
+        fprintf(stderr,
+                "\nUsage:  ./sc [options]"
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
@@ -119,11 +128,16 @@ struct Params {
                 "\n"
                 "\nData-partitioning-specific options:"
                 "\n    -a <A>    fraction of input elements to process on host (default=0.1)"
+#ifdef OCL_2_0
+                "\n              NOTE: Dynamic partitioning used when <A> is not between 0.0 and 1.0"
+#else
+                "\n              NOTE: <A> must be between 0.0 and 1.0"
+#endif
                 "\n"
                 "\nBenchmark-specific options:"
                 "\n    -n <N>    input size (default=1048576)"
                 "\n    -c <C>    compaction factor (default=50)"
-                "\n";
+                "\n");
     }
 };
 
@@ -185,13 +199,13 @@ int main(int argc, char **argv) {
 
     // Initialize
     timer.start("Initialization");
+    const int max_wi = ocl.max_work_items(ocl.clKernel);
     read_input(h_in_out, p);
-    Partitioner partitioner = partitioner_create(n_tasks, p.alpha);
 #ifdef OCL_2_0
     h_flags[0].store(1);
 #else
-    h_flags[0]                   = 1;
-    h_flags[partitioner.cut]     = 1;
+    h_flags[0]           = 1;
+    h_flags[n_tasks_cpu] = 1;
 #endif
     timer.stop("Initialization");
     timer.print("Initialization", 1);
@@ -202,7 +216,7 @@ int main(int argc, char **argv) {
     timer.start("Copy To Device");
     clStatus = clEnqueueWriteBuffer(
         ocl.clCommandQueue, d_in_out, CL_TRUE, 0, n_tasks_gpu * p.n_work_items * REGS * sizeof(T),
-        h_in_out + partitioner.cut * p.n_work_items * REGS, 0, NULL, NULL);
+        h_in_out + n_tasks_cpu * p.n_work_items * REGS, 0, NULL, NULL);
     clStatus = clEnqueueWriteBuffer(
         ocl.clCommandQueue, d_flags, CL_TRUE, 0, n_flags * sizeof(int), h_flags, 0, NULL, NULL);
     CL_ERR();
@@ -219,15 +233,15 @@ int main(int argc, char **argv) {
         memset(h_flags, 0, n_flags * sizeof(atomic_int));
 #ifdef OCL_2_0
         h_flags[0].store(1);
-        if(partitioner.strategy == DYNAMIC_PARTITIONING) {
+        if(p.alpha < 0.0 || p.alpha > 1.0) { // Dynamic partitioning
             worklist[0].store(0);
         }
 #else
-        h_flags[0]               = 1;
-        h_flags[partitioner.cut] = 1;
+        h_flags[0]           = 1;
+        h_flags[n_tasks_cpu] = 1;
         clStatus = clEnqueueWriteBuffer(
             ocl.clCommandQueue, d_in_out, CL_TRUE, 0, n_tasks_gpu * p.n_work_items * REGS * sizeof(T),
-            h_in_out + partitioner.cut * p.n_work_items * REGS, 0, NULL, NULL);
+            h_in_out + n_tasks_cpu * p.n_work_items * REGS, 0, NULL, NULL);
         clStatus = clEnqueueWriteBuffer(
             ocl.clCommandQueue, d_flags, CL_TRUE, 0, n_flags * sizeof(int), h_flags, 0, NULL, NULL);
         CL_ERR();
@@ -237,36 +251,37 @@ int main(int argc, char **argv) {
         if(rep >= p.n_warmup)
             timer.start("Kernel");
 
+        clSetKernelArg(ocl.clKernel, 0, sizeof(int), &p.in_size);
+        clSetKernelArg(ocl.clKernel, 1, sizeof(int), &p.remove_value);
+        clSetKernelArg(ocl.clKernel, 2, p.n_work_items * sizeof(int), NULL);
+        clSetKernelArg(ocl.clKernel, 3, sizeof(int), NULL);
+        clSetKernelArg(ocl.clKernel, 4, sizeof(int), &n_tasks);
+        clSetKernelArg(ocl.clKernel, 5, sizeof(float), &p.alpha);
 #ifdef OCL_2_0
-        clSetKernelArgSVMPointer(ocl.clKernel, 0, d_in_out);
-        clSetKernelArgSVMPointer(ocl.clKernel, 1, d_in_out);
-        clSetKernelArgSVMPointer(ocl.clKernel, 2, d_flags);
-#else
-        clSetKernelArg(ocl.clKernel, 0, sizeof(cl_mem), &d_in_out);
-        clSetKernelArg(ocl.clKernel, 1, sizeof(cl_mem), &d_in_out);
-        clSetKernelArg(ocl.clKernel, 2, sizeof(cl_mem), &d_flags);
-#endif
-        clSetKernelArg(ocl.clKernel, 3, sizeof(int), &p.in_size);
-        clSetKernelArg(ocl.clKernel, 4, sizeof(int), &p.remove_value);
-        clSetKernelArg(ocl.clKernel, 5, p.n_work_items * sizeof(int), NULL);
-        clSetKernelArg(ocl.clKernel, 6, sizeof(int), NULL);
-        clSetKernelArg(ocl.clKernel, 7, sizeof(int), NULL);
-        clSetKernelArg(ocl.clKernel, 8, sizeof(Partitioner), &partitioner);
-#ifdef OCL_2_0
+        clSetKernelArgSVMPointer(ocl.clKernel, 6, d_in_out);
+        clSetKernelArgSVMPointer(ocl.clKernel, 7, d_in_out);
+        clSetKernelArgSVMPointer(ocl.clKernel, 8, d_flags);
         clSetKernelArgSVMPointer(ocl.clKernel, 9, worklist);
+        clSetKernelArg(ocl.clKernel, 10, sizeof(int), NULL);
+#else
+        clSetKernelArg(ocl.clKernel, 6, sizeof(cl_mem), &d_in_out);
+        clSetKernelArg(ocl.clKernel, 7, sizeof(cl_mem), &d_in_out);
+        clSetKernelArg(ocl.clKernel, 8, sizeof(cl_mem), &d_flags);
 #endif
 
         // Kernel launch
         size_t ls[1] = {(size_t)p.n_work_items};
         size_t gs[1] = {(size_t)p.n_work_items * p.n_work_groups};
         if(gs[0] > 0) {
+            assert(ls[0] <= max_wi && 
+                "The work-group size is greater than the maximum work-group size that can be used to execute this kernel");
             clStatus = clEnqueueNDRangeKernel(ocl.clCommandQueue, ocl.clKernel, 1, NULL, gs, ls, 0, NULL, NULL);
             CL_ERR();
         }
 
         // Launch CPU threads
         std::thread main_thread(run_cpu_threads, h_in_out, h_in_out, h_flags, p.in_size, p.remove_value, p.n_threads,
-            p.n_work_items, partitioner
+            p.n_work_items, n_tasks, p.alpha
 #ifdef OCL_2_0
             ,
             worklist
@@ -285,9 +300,9 @@ int main(int argc, char **argv) {
     // Copy back
     timer.start("Copy Back and Merge");
     if(p.alpha < 1.0) {
-        int offset = partitioner.cut == 0 ? 1 : 2;
+        int offset = n_tasks_cpu == 0 ? 1 : 2;
         clStatus   = clEnqueueReadBuffer(ocl.clCommandQueue, d_in_out, CL_TRUE, 0,
-            n_tasks_gpu * p.n_work_items * REGS * sizeof(T), h_in_out + h_flags[partitioner.cut] - offset, 0, NULL,
+            n_tasks_gpu * p.n_work_items * REGS * sizeof(T), h_in_out + h_flags[n_tasks_cpu] - offset, 0, NULL,
             NULL);
         CL_ERR();
     }

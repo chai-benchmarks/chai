@@ -34,31 +34,32 @@
  */
 
 #include "kernel.h"
+#include "support/partitioner.h"
 #include <math.h>
 #include <thread>
 #include <vector>
 #include <algorithm>
 
 // CPU threads--------------------------------------------------------------------------------------
-void run_cpu_threads(T *output, T *input, std::atomic_int *flags, int size, int value, int num_threads, int ldim,
-    Partitioner p
+void run_cpu_threads(T *output, T *input, std::atomic_int *flags, int size, int value, int n_threads, int ldim,
+    int n_tasks, float alpha
 #ifdef OCL_2_0
-    ,
-    std::atomic_int *wl) {
-#else
-    ) {
+    , std::atomic_int *worklist
 #endif
+    ) {
 
     const int                REGS_CPU = REGS * ldim;
     std::vector<std::thread> cpu_threads;
-    for(int i = 0; i < num_threads; i++) {
+    for(int i = 0; i < n_threads; i++) {
         cpu_threads.push_back(std::thread([=]() {
 
 #ifdef OCL_2_0
-            for(int my_s = cpu_first(&p, i, wl); cpu_more(&p, my_s); my_s = cpu_next(&p, my_s, num_threads, wl)) {
+            Partitioner p = partitioner_create(n_tasks, alpha, i, n_threads, worklist);
 #else
-            for(int my_s = cpu_first(&p, i); cpu_more(&p, my_s); my_s = cpu_next(&p, my_s, num_threads)) {
+            Partitioner p = partitioner_create(n_tasks, alpha, i, n_threads);
 #endif
+
+            for(int my_s = cpu_first(&p); cpu_more(&p); my_s = cpu_next(&p)) {
 
                 int l_count = 0;
                 // Declare on-chip memory

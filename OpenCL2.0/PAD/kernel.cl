@@ -43,31 +43,25 @@
 #include "support/partitioner.h"
 
 // OpenCL kernel ------------------------------------------------------------------------------------------
-__kernel void Padding_kernel(__global T *matrix_out, __global T *matrix,
+__kernel void Padding_kernel(int n, int m, int pad, int n_tasks, float alpha, __global T *matrix_out, __global T *matrix,
 #ifdef OCL_2_0
-    __global atomic_int *flags,
+    __global atomic_int *flags, __global atomic_int *worklist, __local int *l_tmp
 #else
-    __global int *flags,
+    __global int *flags
 #endif
-    __local int *tmp, int n, int m, int pad, Partitioner p
-#ifdef OCL_2_0
-    ,
-    __global atomic_int *wl) {
-#else
     ) {
+
+#ifdef OCL_2_0
+    Partitioner p = partitioner_create(n_tasks, alpha, worklist, l_tmp);
+#else
+    Partitioner p = partitioner_create(n_tasks, alpha);
 #endif
 
     const int matrix_size = m * (n + pad);
     const int matrix_size_align =
         (matrix_size + get_local_size(0) * REGS - 1) / (get_local_size(0) * REGS) * (get_local_size(0) * REGS);
 
-#ifdef OCL_2_0
-    for(int my_s = gpu_first(&p, get_group_id(0), tmp, wl); gpu_more(&p, my_s);
-        my_s     = gpu_next(&p, my_s, get_num_groups(0), tmp, wl)) {
-#else
-    for(int my_s = gpu_first(&p, get_group_id(0), tmp); gpu_more(&p, my_s);
-        my_s     = gpu_next(&p, my_s, get_num_groups(0), tmp)) {
-#endif
+    for(int my_s = gpu_first(&p); gpu_more(&p); my_s = gpu_next(&p)) {
 
         // Declare on-chip memory
         T   reg[REGS];

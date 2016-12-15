@@ -42,49 +42,89 @@
 #define STATIC_PARTITIONING 0
 #define DYNAMIC_PARTITIONING 1
 
-typedef struct Partitioner {
+// Partitioner definition -----------------------------------------------------
+
+typedef struct CoarseGrainPartitioner {
 
     int n_tasks;
-    int cut;
     int strategy;
+    union {
+        int cut;                    // Used for static partitioning
+        std::atomic_int *worklist;  // Used for dynamic partitioning
+    };
+    int cpu_current;
+    int gpu_current;
 
-} Partitioner;
+} CoarseGrainPartitioner;
 
-inline Partitioner partitioner_create(int n_tasks, float alpha) {
-    Partitioner p;
+// Create a partitioner -------------------------------------------------------
+
+inline CoarseGrainPartitioner partitioner_create(int n_tasks, float alpha, std::atomic_int *worklist) {
+    CoarseGrainPartitioner p;
     p.n_tasks = n_tasks;
     if(alpha >= 0.0 && alpha <= 1.0) {
-        p.cut      = p.n_tasks * alpha;
         p.strategy = STATIC_PARTITIONING;
+        p.cut      = p.n_tasks * alpha;
     } else {
         p.strategy = DYNAMIC_PARTITIONING;
+        p.worklist = worklist;
     }
     return p;
 }
 
-inline int cpu_first(const Partitioner *p, int id, std::atomic_int *worklist) {
+// Partitioner iterators: first() ---------------------------------------------
+
+inline int cpu_first(CoarseGrainPartitioner *p) {
     if(p->strategy == DYNAMIC_PARTITIONING) {
-        return worklist->fetch_add(1);
+        p->cpu_current = p->worklist->fetch_add(1);
     } else {
-        return (id * p->cut);
+        p->cpu_current = 0;
+    }
+    return p->cpu_current;
+}
+
+inline int gpu_first(CoarseGrainPartitioner *p) {
+    if(p->strategy == DYNAMIC_PARTITIONING) {
+        p->gpu_current = p->worklist->fetch_add(1);
+    } else {
+        p->gpu_current = p->cut;
+    }
+    return p->gpu_current;
+}
+
+// Partitioner iterators: more() ----------------------------------------------
+
+inline bool cpu_more(CoarseGrainPartitioner *p) {
+    if(p->strategy == DYNAMIC_PARTITIONING) {
+        return p->cpu_current < p->n_tasks;
+    } else {
+        return p->cpu_current < p->cut;
     }
 }
 
-inline int cpu_next(
-    const Partitioner *p, int old, int numCPUThreads, std::atomic_int *worklist) {
-    if(p->strategy == DYNAMIC_PARTITIONING) {
-        return worklist->fetch_add(1);
-    } else {
-        return old + numCPUThreads;
-    }
+inline bool gpu_more(CoarseGrainPartitioner *p) {
+    return p->gpu_current < p->n_tasks;
 }
 
-inline bool cpu_more(const Partitioner *p, int id, int old) {
+// Partitioner iterators: next() ----------------------------------------------
+
+inline int cpu_next(CoarseGrainPartitioner *p) {
     if(p->strategy == DYNAMIC_PARTITIONING) {
-        return (old < p->n_tasks);
+        p->cpu_current = p->worklist->fetch_add(1);
     } else {
-        return (old < (id == 0 ? p->cut : p->n_tasks));
+        p->cpu_current += 1;
     }
+    return p->cpu_current;
 }
+
+inline int gpu_next(CoarseGrainPartitioner *p) {
+    if(p->strategy == DYNAMIC_PARTITIONING) {
+        p->gpu_current = p->worklist->fetch_add(1);
+    } else {
+        p->gpu_current += 1;
+    }
+    return p->gpu_current;
+}
+
 
 #endif

@@ -35,12 +35,10 @@
 
 #include <atomic>
 #include "support/common.h"
-#include "support/partitioner.h"
 
-void run_cpu_threads(XYZ *in, XYZ *out, Partitioner p, int n_threads, int n_work_items, int in_size_i, int in_size_j,
+void run_cpu_threads(XYZ *in, XYZ *out, int n_tasks, float alpha, int n_threads, int n_work_items, int in_size_i, int in_size_j,
     int out_size_i, int out_size_j
 #ifdef OCL_2_0
-    ,
-    std::atomic_int *worklist
+    , std::atomic_int *worklist
 #endif
     );

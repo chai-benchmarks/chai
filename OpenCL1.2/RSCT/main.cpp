@@ -90,7 +90,7 @@ struct Params {
             case 'e': error_threshold       = atoi(optarg); break;
             case 'c': convergence_threshold = atof(optarg); break;
             default:
-                cerr << "\nUnrecognized option!" << endl;
+                fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
                 exit(0);
             }
@@ -101,7 +101,8 @@ struct Params {
     }
 
     void usage() {
-        cerr << "\nUsage:  ./rsct [options]"
+        fprintf(stderr,
+                "\nUsage:  ./rsct [options]"
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
@@ -118,7 +119,7 @@ struct Params {
                 "\n    -m <M>    maximum # of iterations (default=2000)"
                 "\n    -e <E>    error threshold (default=3)"
                 "\n    -c <C>    convergence threshold (default=0.75)"
-                "\n";
+                "\n");
     }
 };
 
@@ -212,6 +213,7 @@ int main(int argc, char **argv) {
 
     // Initialize
     timer.start("Initialization");
+    const int max_wi = ocl.max_work_items(ocl.clKernel);
     read_input(h_flow_vector_array, h_random_numbers, p);
     timer.stop("Initialization");
     timer.print("Initialization", 1);
@@ -289,6 +291,8 @@ int main(int argc, char **argv) {
         // Kernel launch
         size_t ls[1] = {(size_t)p.n_work_items};
         size_t gs[1] = {(size_t)p.n_work_groups * p.n_work_items};
+        assert(ls[0] <= max_wi && 
+            "The work-group size is greater than the maximum work-group size that can be used to execute this kernel");
         clStatus     = clEnqueueNDRangeKernel(ocl.clCommandQueue, ocl.clKernel, 1, NULL, gs, ls, 0, NULL, NULL);
         CL_ERR();
         clFinish(ocl.clCommandQueue);

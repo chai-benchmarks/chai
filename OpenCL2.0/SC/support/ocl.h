@@ -63,6 +63,7 @@ struct OpenCLSetup {
     cl_command_queue clCommandQueue;
     cl_program       clProgram;
     cl_kernel        clKernel;
+    cl_device_id     clDeviceID;
 
     OpenCLSetup(int platform, int device) {
         cl_int  clStatus;
@@ -99,7 +100,8 @@ struct OpenCLSetup {
         CL_ERR();
         char device_name_[100];
         clGetDeviceInfo(clDevices[device], CL_DEVICE_NAME, 100, &device_name_, NULL);
-        std::cerr << device_name_ << "\t";
+        clDeviceID = clDevices[device];
+        fprintf(stderr, "%s\t", device_name_);
 
 #ifdef OCL_2_0
         cl_queue_properties prop[] = {0};
@@ -119,13 +121,7 @@ struct OpenCLSetup {
         CL_ERR();
 
         char clOptions[50];
-//#ifdef OCL_2_0
-#if 1
         sprintf(clOptions, "-I. -cl-std=CL2.0");
-#else
-        sprintf(clOptions, "-I.");
-#endif
-        //std::cerr << clOptions << "\t";
 
         clStatus = clBuildProgram(clProgram, 0, NULL, clOptions, NULL, NULL);
         if(clStatus == CL_BUILD_PROGRAM_FAILURE) {
@@ -137,12 +133,20 @@ struct OpenCLSetup {
             // Get the log
             clGetProgramBuildInfo(clProgram, clDevices[device], CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
             // Print the log
-            std::cerr << log << "\t";
+            fprintf(stderr, "%s\t", log);
         }
         CL_ERR();
 
         clKernel = clCreateKernel(clProgram, "StreamCompaction_kernel", &clStatus);
         CL_ERR();
+    }
+
+    size_t max_work_items(cl_kernel clKernel) {
+        size_t max_work_items;
+        cl_int clStatus =  clGetKernelWorkGroupInfo(
+            clKernel, clDeviceID, CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &max_work_items, NULL);
+        CL_ERR();
+        return max_work_items;
     }
 
     void release() {

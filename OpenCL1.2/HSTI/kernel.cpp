@@ -34,23 +34,27 @@
  */
 
 #include "kernel.h"
+#include "support/partitioner.h"
 #include <math.h>
 #include <thread>
 #include <vector>
 #include <algorithm>
 
 // CPU threads--------------------------------------------------------------------------------------
-void run_cpu_threads(std::atomic_uint *histo, unsigned int *data, int size, int bins, int num_threads, int chunk,
-    Partitioner p
+void run_cpu_threads(std::atomic_uint *histo, unsigned int *data, int size, int bins, int n_threads, int chunk, int n_tasks, float alpha
 #ifdef OCL_2_0
-    ,
-    std::atomic_int *wl) {
-#else
-    ) {
+    , std::atomic_int *worklist
 #endif
+    ) {
     std::vector<std::thread> cpu_threads;
-    for(int k = 0; k < num_threads; k++) {
+    for(int k = 0; k < n_threads; k++) {
         cpu_threads.push_back(std::thread([=]() {
+
+#ifdef OCL_2_0
+            Partitioner p = partitioner_create(n_tasks, alpha, k, n_threads, worklist);
+#else
+            Partitioner p = partitioner_create(n_tasks, alpha, k, n_threads);
+#endif
 
             unsigned int Hs[bins];
             // Local histogram initialization
@@ -58,11 +62,7 @@ void run_cpu_threads(std::atomic_uint *histo, unsigned int *data, int size, int 
                 Hs[i] = 0;
             }
 
-#ifdef OCL_2_0
-            for(int i = cpu_first(&p, k, wl); cpu_more(&p, i); i = cpu_next(&p, i, num_threads, wl)) {
-#else
-            for(int i = cpu_first(&p, k); cpu_more(&p, i); i = cpu_next(&p, i, num_threads)) {
-#endif
+            for(int i = cpu_first(&p); cpu_more(&p); i = cpu_next(&p)) {
                 for(int j = 0; j < chunk; j++) {
                     // Read pixel
                     unsigned int d = ((data[i * chunk + j] * bins) >> 12);

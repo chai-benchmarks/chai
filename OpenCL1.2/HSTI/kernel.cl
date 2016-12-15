@@ -42,25 +42,20 @@
 #include "support/partitioner.h"
 
 // OpenCL kernel ------------------------------------------------------------------------------------------
-__kernel void Histogram_kernel(
+__kernel void Histogram_kernel(int size, int bins, int n_tasks, float alpha, __global unsigned int *data,
 #ifdef OCL_2_0
-    __global atomic_uint *histo,
+    __global atomic_uint *histo, __local atomic_uint *l_histo, __global atomic_int *worklist, __local int *l_tmp
 #else
-    __global unsigned int *histo,
-#endif
-    __global unsigned int *data, int size, int bins, Partitioner p, __local int *tmp
-#ifdef OCL_2_0
-    ,
-    __global atomic_int *wl
-#endif
-#ifdef OCL_2_0
-    ,
-    __local atomic_uint *l_histo
-#else
-    ,
-    __local unsigned int *l_histo
+    __global unsigned int *histo, __local unsigned int *l_histo
 #endif
     ) {
+    
+#ifdef OCL_2_0
+    Partitioner p = partitioner_create(n_tasks, alpha, worklist, l_tmp);
+#else
+    Partitioner p = partitioner_create(n_tasks, alpha);
+#endif
+    
     // Block and thread index
     const int bx = get_group_id(0);
     const int tx = get_local_id(0);
@@ -78,12 +73,9 @@ __kernel void Histogram_kernel(
 
     barrier(CLK_LOCAL_MEM_FENCE); // Intra-block synchronization
 
-// Main loop
-#ifdef OCL_2_0
-    for(int i = gpu_first(&p, bx, tmp, wl); gpu_more(&p, i); i = gpu_next(&p, i, gD, tmp, wl)) {
-#else
-    for(int i = gpu_first(&p, bx, tmp); gpu_more(&p, i); i = gpu_next(&p, i, gD, tmp)) {
-#endif
+    // Main loop
+    for(int i = gpu_first(&p); gpu_more(&p); i = gpu_next(&p)) {
+    
         // Global memory read
         unsigned int d = data[i * bD + tx];
 

@@ -86,22 +86,28 @@ struct Params {
             case 'n': in_size       = atoi(optarg); break;
             case 'b': n_bins        = atoi(optarg); break;
             default:
-                cerr << "\nUnrecognized option!" << endl;
+                fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
                 exit(0);
             }
         }
-        if(alpha > 0.0 && alpha < 1.0) {
+        if(alpha == 0.0) {
+            assert(n_work_items > 0 && "Invalid # of device work-items!");
+            assert(n_work_groups > 0 && "Invalid # of device work-groups!");
+        } else if(alpha == 1.0) {
+            assert(n_threads > 0 && "Invalid # of host threads!");
+        } else if(alpha > 0.0 && alpha < 1.0) {
             assert(n_work_items > 0 && "Invalid # of device work-items!");
             assert(n_work_groups > 0 && "Invalid # of device work-groups!");
             assert(n_threads > 0 && "Invalid # of host threads!");
         } else {
-            assert((n_work_items > 0 && n_work_groups > 0 || n_threads > 0) && "Invalid # of CPU + GPU workers!");
+            assert(0 && "Illegal value for -a");
         }
     }
 
     void usage() {
-        cerr << "\nUsage:  ./hsto [options]"
+        fprintf(stderr,
+                "\nUsage:  ./hsto [options]"
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
@@ -115,11 +121,12 @@ struct Params {
                 "\n"
                 "\nData-partitioning-specific options:"
                 "\n    -a <A>    fraction of output bins to process on host (default=0.25)"
+                "\n              NOTE: <A> must be between 0.0 and 1.0"
                 "\n"
                 "\nBenchmark-specific options:"
                 "\n    -n <N>    input size (default=1572864, i.e., 1536x1024)"
                 "\n    -b <B>    # of bins in histogram (default=256)"
-                "\n";
+                "\n");
     }
 };
 
@@ -181,6 +188,7 @@ int main(int argc, char **argv) {
 
     // Initialize
     timer.start("Initialization");
+    const int max_wi = ocl.max_work_items(ocl.clKernel);
     read_input(h_in, p);
 #ifdef OCL_2_0
     for(int i = 0; i < p.n_bins; i++) {
@@ -208,7 +216,7 @@ int main(int argc, char **argv) {
 
     for(int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
 
-// Reset
+        // Reset
 #ifdef OCL_2_0
         for(int i = 0; i < p.n_bins; i++) {
             h_histo[i].store(0);
@@ -224,22 +232,24 @@ int main(int argc, char **argv) {
         if(rep >= p.n_warmup)
             timer.start("Kernel");
 
-// Launch GPU threads
+        // Launch GPU threads
+        clSetKernelArg(ocl.clKernel, 0, sizeof(int), &p.in_size);
+        clSetKernelArg(ocl.clKernel, 1, sizeof(int), &p.n_bins);
+        clSetKernelArg(ocl.clKernel, 2, sizeof(int), &n_cpu_bins);
 #ifdef OCL_2_0
-        clSetKernelArgSVMPointer(ocl.clKernel, 0, d_histo);
-        clSetKernelArgSVMPointer(ocl.clKernel, 1, d_in);
+        clSetKernelArgSVMPointer(ocl.clKernel, 3, d_in);
+        clSetKernelArgSVMPointer(ocl.clKernel, 4, d_histo);
 #else
-        clSetKernelArg(ocl.clKernel, 0, sizeof(cl_mem), &d_histo);
-        clSetKernelArg(ocl.clKernel, 1, sizeof(cl_mem), &d_in);
+        clSetKernelArg(ocl.clKernel, 3, sizeof(cl_mem), &d_in);
+        clSetKernelArg(ocl.clKernel, 4, sizeof(cl_mem), &d_histo);
 #endif
-        clSetKernelArg(ocl.clKernel, 2, sizeof(int), &p.in_size);
-        clSetKernelArg(ocl.clKernel, 3, sizeof(int), &p.n_bins);
-        clSetKernelArg(ocl.clKernel, 4, sizeof(int), &n_cpu_bins);
         clSetKernelArg(ocl.clKernel, 5, p.n_bins * sizeof(std::atomic_int), NULL);
         // Kernel launch
         size_t ls[1] = {(size_t)p.n_work_items};
         size_t gs[1] = {(size_t)p.n_work_groups * p.n_work_items};
         if(p.n_work_groups > 0) {
+            assert(ls[0] <= max_wi && 
+                "The work-group size is greater than the maximum work-group size that can be used to execute this kernel");
             clStatus = clEnqueueNDRangeKernel(ocl.clCommandQueue, ocl.clKernel, 1, NULL, gs, ls, 0, NULL, NULL);
             CL_ERR();
         }
@@ -270,7 +280,7 @@ int main(int argc, char **argv) {
     timer.print("Copy Back and Merge", 1);
 #endif
 
-// Verify answer
+    // Verify answer
 #ifdef OCL_2_0
     verify((unsigned int *)h_histo, h_in, p.in_size, p.n_bins);
 #else

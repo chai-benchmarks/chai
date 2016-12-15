@@ -68,20 +68,22 @@ int gen_model_param(int x1, int y1, int vx1, int vy1, int x2, int y2, int vx2, i
     return (1);
 }
 
-__kernel void RANSAC_kernel_block(__global float *model_param_local, __global flowvector *flowvectors,
-    int flowvector_count, __global int *random_numbers, int max_iter, int error_threshold, float convergence_threshold,
+__kernel void RANSAC_kernel_block(int flowvector_count, int max_iter, int error_threshold, float convergence_threshold,
+    int n_tasks, float alpha, __global float *model_param_local, __global flowvector *flowvectors,
+    __global int *random_numbers, __global int *model_candidate, __global int *outliers_candidate, 
 #ifdef OCL_2_0
-    __global atomic_int *g_out_id, __local atomic_int *outlier_block_count,
+    __global atomic_int *g_out_id, __local atomic_int *outlier_block_count, __global atomic_int *worklist, __local int *l_tmp
 #else
-    __global int *g_out_id, __local int *outlier_block_count,
+    __global int *g_out_id, __local int *outlier_block_count
 #endif
-    __global int *model_candidate, __global int *outliers_candidate, Partitioner p, __local int *tmp
-#ifdef OCL_2_0
-    ,
-    __global atomic_int *wl) {
-#else
     ) {
-#endif
+    
+#ifdef OCL_2_0
+    Partitioner p = partitioner_create(n_tasks, alpha, worklist, l_tmp);
+ #else
+    Partitioner p = partitioner_create(n_tasks, alpha);
+ #endif
+    
     const int tx         = get_local_id(0);
     const int bx         = get_group_id(0);
     const int num_blocks = get_num_groups(0);
@@ -89,12 +91,9 @@ __kernel void RANSAC_kernel_block(__global float *model_param_local, __global fl
     float vx_error, vy_error;
     int   outlier_local_count = 0;
 
-// Each block performs one iteration
-#ifdef OCL_2_0
-    for(int iter = gpu_first(&p, bx, tmp, wl); gpu_more(&p, iter); iter = gpu_next(&p, iter, num_blocks, tmp, wl)) {
-#else
-    for(int iter = gpu_first(&p, bx, tmp); gpu_more(&p, iter); iter = gpu_next(&p, iter, num_blocks, tmp)) {
-#endif
+    // Each block performs one iteration
+    for(int iter = gpu_first(&p); gpu_more(&p); iter = gpu_next(&p)) {
+
         __global float *model_param =
             &model_param_local
                 [4 * iter]; // xc=model_param_sh[0], yc=model_param_sh[1], D=model_param_sh[2], R=model_param_sh[3]
@@ -153,21 +152,21 @@ __kernel void RANSAC_kernel_block(__global float *model_param_local, __global fl
 
         barrier(CLK_LOCAL_MEM_FENCE);
         if(tx == 0) {
-// Compare to threshold
+            // Compare to threshold
 #ifdef OCL_2_0
             if(atomic_load(&outlier_block_count[0]) < flowvector_count * convergence_threshold) {
-#else
-            if(outlier_block_count[0] < flowvector_count * convergence_threshold) {
-#endif
-#ifdef OCL_2_0
                 int index                 = atomic_fetch_add(g_out_id, 1);
                 outliers_candidate[index] = atomic_load(&outlier_block_count[0]);
-#else
-                int index                 = atomic_add(g_out_id, 1);
-                outliers_candidate[index] = outlier_block_count[0];
-#endif
                 model_candidate[index] = iter;
             }
+#else
+            if(outlier_block_count[0] < flowvector_count * convergence_threshold) {
+                int index                 = atomic_add(g_out_id, 1);
+                outliers_candidate[index] = outlier_block_count[0];
+                model_candidate[index] = iter;
+            }
+#endif
         }
     }
 }
+

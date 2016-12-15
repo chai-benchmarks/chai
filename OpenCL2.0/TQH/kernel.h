@@ -38,10 +38,10 @@
 #include "support/common.h"
 using namespace std;
 
-void host_insert_tasks(task_t *queues, task_t *task_pool, std::atomic_int *num_consumed_tasks,
-    std::atomic_int *num_written_tasks, std::atomic_int *num_task_in_queue, int *last_queue, int *num_tasks,
+void host_insert_tasks(task_t *queues, task_t *task_pool, std::atomic_int *n_consumed_tasks,
+    std::atomic_int *n_written_tasks, std::atomic_int *n_task_in_queue, int *last_queue, int *n_tasks,
     int gpuQueueSize, int *offset);
-void run_cpu_threads(int n_threads, task_t *ptr_queues, std::atomic_int *ptr_num_task_in_queue,
-    std::atomic_int *ptr_num_written_tasks, std::atomic_int *ptr_num_consumed_tasks, task_t *ptr_task_pool,
-    int *ptr_data, int gpuQueueSize, int *ptr_offset, int *ptr_last_queue, int *ptr_num_tasks, int tpi, int poolSize,
+void run_cpu_threads(int n_threads, task_t *queues, std::atomic_int *n_task_in_queue,
+    std::atomic_int *n_written_tasks, std::atomic_int *n_consumed_tasks, task_t *task_pool,
+    int *data, int gpuQueueSize, int *offset, int *last_queue, int *n_tasks, int tpi, int poolSize,
     int n_work_groups);

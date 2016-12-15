@@ -34,6 +34,7 @@
  */
 
 #include "kernel.h"
+#include "support/partitioner.h"
 #include <math.h>
 #include <thread>
 #include <vector>
@@ -66,26 +67,27 @@ T BezierBlend(int k, T mu, int n) {
 }
 
 // CPU threads-----------------------------------------------------------------
-void run_cpu_threads(XYZ *in, XYZ *outp, Partitioner p, int n_threads, int n_work_items, int in_size_i, int in_size_j,
+void run_cpu_threads(XYZ *in, XYZ *outp, int n_tasks, float alpha, int n_threads, int n_work_items, int in_size_i, int in_size_j,
     int out_size_i, int out_size_j
 #ifdef OCL_2_0
-    ,
-    std::atomic_int *worklist) {
+    , std::atomic_int *worklist) {
 #else
     ) {
 #endif
     std::vector<std::thread> cpu_threads;
     for(int k = 0; k < n_threads; k++) {
         cpu_threads.push_back(std::thread([=]() {
+        
+#ifdef OCL_2_0
+            Partitioner p = partitioner_create(n_tasks, alpha, k, n_threads, worklist);
+#else
+            Partitioner p = partitioner_create(n_tasks, alpha, k, n_threads);
+#endif
 
             const int wg_in_J = divceil(out_size_j, n_work_items);
             const int wg_in_I = divceil(out_size_i, n_work_items);
 
-#ifdef OCL_2_0
-            for(int t = cpu_first(&p, k, worklist); cpu_more(&p, t); t = cpu_next(&p, t, n_threads, worklist)) {
-#else
-            for(int t = cpu_first(&p, k); cpu_more(&p, t); t = cpu_next(&p, t, n_threads)) {
-#endif
+            for(int t = cpu_first(&p); cpu_more(&p); t = cpu_next(&p)) {
                 const int my_s1 = t / wg_in_J;
                 const int my_s0 = t % wg_in_J;
 
@@ -112,7 +114,7 @@ void run_cpu_threads(XYZ *in, XYZ *outp, Partitioner p, int n_threads, int n_wor
                                     out.z += (in[ki * (in_size_j + 1) + kj].z * bi * bj);
                                 }
                             }
-                            outp[i * out_size_j + j] = out;
+														outp[i * out_size_j + j] = out;
                         }
                     }
                 }

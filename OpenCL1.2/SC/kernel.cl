@@ -43,8 +43,8 @@
 
 // Device auxiliary functions
 void reduce(__local int *l_count, int local_cnt, __local int *l_data) {
-    int tid       = get_local_id(0);
-    int localSize = get_local_size(0);
+    const int tid       = get_local_id(0);
+    const int localSize = get_local_size(0);
     // load shared mem
     l_data[tid] = local_cnt;
     barrier(CLK_LOCAL_MEM_FENCE);
@@ -62,7 +62,7 @@ void reduce(__local int *l_count, int local_cnt, __local int *l_data) {
 
 int block_binary_prefix_sums(__local int *l_count, int x, volatile __local int *l_data) {
     l_data[get_local_id(0)] = x;
-    int length     = get_local_size(0);
+    const int length     = get_local_size(0);
     // Build up tree
     int offset = 1;
     for(int l = length >> 1; l > 0; l >>= 1) {
@@ -99,27 +99,22 @@ int block_binary_prefix_sums(__local int *l_count, int x, volatile __local int *
 }
 
 // OpenCL kernel ------------------------------------------------------------------------------------------
-__kernel void StreamCompaction_kernel(__global T *output, __global T *input,
+__kernel void StreamCompaction_kernel(int size, T value, volatile __local int *l_data, __local int *l_count, int n_tasks, float alpha, __global T *output, __global T *input,
 #ifdef OCL_2_0
-    __global atomic_int *flags,
+    __global atomic_int *flags, __global atomic_int *worklist, __local int *l_tmp
 #else
-    __global int *flags,
+    __global int *flags
 #endif
-    int size, T value, volatile __local int *l_data, __local int *l_count, __local int *tmp, Partitioner p
-#ifdef OCL_2_0
-    ,
-    __global atomic_int *wl) {
-#else
     ) {
-#endif
 
 #ifdef OCL_2_0
-    for(int my_s = gpu_first(&p, get_group_id(0), tmp, wl); gpu_more(&p, my_s);
-        my_s     = gpu_next(&p, my_s, get_num_groups(0), tmp, wl)) {
+    Partitioner p = partitioner_create(n_tasks, alpha, worklist, l_tmp);
 #else
-    for(int my_s = gpu_first(&p, get_group_id(0), tmp); gpu_more(&p, my_s);
-        my_s     = gpu_next(&p, my_s, get_num_groups(0), tmp)) {
+    Partitioner p = partitioner_create(n_tasks, alpha);
 #endif
+
+    for(int my_s = gpu_first(&p); gpu_more(&p); my_s = gpu_next(&p)) {
+
         if(get_local_id(0) == 0) {
             l_count[0] = 0;
         }

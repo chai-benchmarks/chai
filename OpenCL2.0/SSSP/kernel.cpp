@@ -47,78 +47,78 @@ int atomic_maximum(std::atomic_int *maximum_value, int value) {
 }
 
 // CPU threads-----------------------------------------------------------------
-void run_cpu_threads(Node *h_graph_nodes, Edge *h_graph_edges, std::atomic_int *ptr_cost, std::atomic_int *ptr_color,
-    int *ptr_q1, int *ptr_q2, int *ptr_num_t, std::atomic_int *ptr_head, std::atomic_int *ptr_tail,
-    std::atomic_int *ptr_threads_end, std::atomic_int *ptr_threads_run, std::atomic_int *ptr_gray_shade,
-    int num_threads, int max_wg, int wg_size, int LIMIT, int GPU)
+void run_cpu_threads(Node *h_graph_nodes, Edge *h_graph_edges, std::atomic_int *cost, std::atomic_int *color,
+    int *q1, int *q2, int *n_t, std::atomic_int *head, std::atomic_int *tail,
+    std::atomic_int *threads_end, std::atomic_int *threads_run, std::atomic_int *gray_shade,
+    int n_threads, int max_wg, int wg_size, int LIMIT, int GPU)
 
 {
 ///////////////// Run CPU worker threads /////////////////////////////////
 #if PRINT
-    printf("Starting %d CPU threads\n", num_threads);
+    printf("Starting %d CPU threads\n", n_threads);
 #endif
     std::vector<std::thread> cpu_threads;
-    for(int i = 0; i < num_threads; i++) {
+    for(int k = 0; k < n_threads; k++) {
         cpu_threads.push_back(std::thread([=]() {
 
-            int *ptr_qin, *ptr_qout;
+            int *qin, *qout;
 
             int iter = 1;
 
-            while(*ptr_num_t != 0) {
+            while(*n_t != 0) {
 
                 // Swap queues
                 if(iter % 2 == 0) {
-                    ptr_qin  = ptr_q1;
-                    ptr_qout = ptr_q2;
+                    qin  = q1;
+                    qout = q2;
                 } else {
-                    ptr_qin  = ptr_q2;
-                    ptr_qout = ptr_q1;
+                    qin  = q2;
+                    qout = q1;
                 }
 
-                if((*ptr_num_t < LIMIT) || (GPU == 0)) {
+                if((*n_t < LIMIT) || (GPU == 0)) {
 
-                    int gray_shade = (ptr_gray_shade)->load();
-                    int base       = (ptr_head)->fetch_add(1); // Fetch new node from input queue
-                    while(base < *ptr_num_t) {
-                        int pid = ptr_qin[base];
-                        ptr_color[pid].store(BLACK); // Node visited
-                        int cur_cost = ptr_cost[pid].load();
+                    int gray_shade_local = (gray_shade)->load();
+                    int base       = (head)->fetch_add(1); // Fetch new node from input queue
+                    while(base < *n_t) {
+                        int pid = qin[base];
+                        color[pid].store(BLACK); // Node visited
+                        int cur_cost = cost[pid].load();
                         // For each outgoing edge
                         for(int i = h_graph_nodes[pid].x; i < (h_graph_nodes[pid].y + h_graph_nodes[pid].x); i++) {
                             int id   = h_graph_edges[i].x;
-                            int cost = h_graph_edges[i].y;
-                            cost += cur_cost;
-                            int orig_cost = atomic_maximum(&ptr_cost[id], cost);
-                            if(orig_cost < cost) {
-                                int old_color = atomic_maximum(&ptr_color[id], gray_shade);
-                                if(old_color != gray_shade) {
+                            int cost_local = h_graph_edges[i].y;
+                            cost_local += cur_cost;
+                            int orig_cost = atomic_maximum(&cost[id], cost_local);
+                            if(orig_cost < cost_local) {
+                                int old_color = atomic_maximum(&color[id], gray_shade_local);
+                                if(old_color != gray_shade_local) {
                                     // Push to the queue
-                                    int index_o       = (ptr_tail)->fetch_add(1);
-                                    ptr_qout[index_o] = id;
+                                    int index_o       = (tail)->fetch_add(1);
+                                    qout[index_o] = id;
                                 }
                             }
                         }
-                        base = (ptr_head)->fetch_add(1); // Fetch new node from input queue
+                        base = (head)->fetch_add(1); // Fetch new node from input queue
                     }
                 }
                 // Synchronization
                 iter++;
-                (ptr_threads_end)->fetch_add(1);
-                if(i == 0) {
-                    while((ptr_threads_end)->load() != GPU * max_wg * wg_size + num_threads) {
+                (threads_end)->fetch_add(1);
+                if(k == 0) {
+                    while((threads_end)->load() != GPU * max_wg * wg_size + n_threads) {
                     }
-                    *ptr_num_t = (ptr_tail)->load();
-                    (ptr_tail)->store(0);
-                    (ptr_head)->store(0);
-                    (ptr_threads_end)->store(0);
+                    *n_t = (tail)->load();
+                    (tail)->store(0);
+                    (head)->store(0);
+                    (threads_end)->store(0);
                     if(iter % 2 == 0)
-                        (ptr_gray_shade)->store(GRAY0);
+                        (gray_shade)->store(GRAY0);
                     else
-                        (ptr_gray_shade)->store(GRAY1);
-                    (ptr_threads_run)->fetch_add(1);
+                        (gray_shade)->store(GRAY1);
+                    (threads_run)->fetch_add(1);
                 } else {
-                    while((ptr_threads_run)->load() < iter) {
+                    while((threads_run)->load() < iter) {
                     }
                 }
             }

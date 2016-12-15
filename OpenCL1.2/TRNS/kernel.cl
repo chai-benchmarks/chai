@@ -42,26 +42,21 @@
 #include "support/common.h"
 
 // GPU kernel ------------------------------------------------------------------------------------------
-__kernel void PTTWAC_soa_asta(__global T *input, int A, int B, int b,
+__kernel void PTTWAC_soa_asta(int A, int B, int b, __local int *done, __local int *gid_, __global T *input,
 #ifdef OCL_2_0
-    __global atomic_int *ptr_finished,
+    __global atomic_int *finished, __global atomic_int *head
 #else
-    __global int *ptr_finished,
+    __global int *finished, __global int *head
 #endif
-#ifdef OCL_2_0
-    __global atomic_int *ptr_head,
-#else
-    __global int *ptr_head,
-#endif
-    __local int *done, __local int *gid_) {
+    ) {
     const int tid = get_local_id(0);
     int       m   = A * B - 1;
 
     if(tid == 0) // Dynamic fetch
 #ifdef OCL_2_0
-        gid_[0] = atomic_fetch_add(&ptr_head[0], 1);
+        gid_[0] = atomic_fetch_add(&head[0], 1);
 #else
-        gid_[0]         = atom_add(&ptr_head[0], 1);
+        gid_[0]         = atom_add(&head[0], 1);
 #endif
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -70,9 +65,9 @@ __kernel void PTTWAC_soa_asta(__global T *input, int A, int B, int b,
         if(next_in_cycle == gid_[0]) {
             if(tid == 0) // Dynamic fetch
 #ifdef OCL_2_0
-                gid_[0] = atomic_fetch_add(&ptr_head[0], 1);
+                gid_[0] = atomic_fetch_add(&head[0], 1);
 #else
-                gid_[0] = atom_add(&ptr_head[0], 1);
+                gid_[0] = atom_add(&head[0], 1);
 #endif
             barrier(CLK_LOCAL_MEM_FENCE);
             continue;
@@ -94,9 +89,9 @@ __kernel void PTTWAC_soa_asta(__global T *input, int A, int B, int b,
         if(tid == 0) {
 //make sure the read is not cached
 #ifdef OCL_2_0
-            done[0] = atomic_load(&ptr_finished[gid_[0]]);
+            done[0] = atomic_load(&finished[gid_[0]]);
 #else
-            done[0]     = atom_add(&ptr_finished[gid_[0]], 0);
+            done[0]     = atom_add(&finished[gid_[0]], 0);
 #endif
         }
         barrier(CLK_LOCAL_MEM_FENCE);
@@ -118,9 +113,9 @@ __kernel void PTTWAC_soa_asta(__global T *input, int A, int B, int b,
 
             if(tid == 0) {
 #ifdef OCL_2_0
-                done[0] = atomic_exchange(&ptr_finished[next_in_cycle], (int)1);
+                done[0] = atomic_exchange(&finished[next_in_cycle], (int)1);
 #else
-                done[0] = atomic_xchg(&ptr_finished[next_in_cycle], (int)1);
+                done[0] = atomic_xchg(&finished[next_in_cycle], (int)1);
 #endif
             }
             barrier(CLK_LOCAL_MEM_FENCE);
@@ -155,9 +150,9 @@ __kernel void PTTWAC_soa_asta(__global T *input, int A, int B, int b,
 
         if(tid == 0) // Dynamic fetch
 #ifdef OCL_2_0
-            gid_[0] = atomic_fetch_add(&ptr_head[0], 1);
+            gid_[0] = atomic_fetch_add(&head[0], 1);
 #else
-            gid_[0]     = atom_add(&ptr_head[0], 1);
+            gid_[0]     = atom_add(&head[0], 1);
 #endif
         barrier(CLK_LOCAL_MEM_FENCE);
     }

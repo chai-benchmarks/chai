@@ -91,7 +91,7 @@ struct Params {
             case 'n': n             = atoi(optarg); break;
             case 's': s             = atoi(optarg); break;
             default:
-                cerr << "\nUnrecognized option!" << endl;
+                fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
                 exit(0);
             }
@@ -100,12 +100,13 @@ struct Params {
         assert((n_work_items > 0 && n_work_groups > 0 || n_threads > 0) && "Invalid # of CPU + GPU workers!");
 #else
         assert(((n_work_items > 0 && n_work_groups > 0) ^ (n_threads > 0))
-            && "TRNS (OpenCL 1.2) runs on CPU-only or GPU-only: './trns -g 0' or './trns -t 0'");
+            && "TRNS only runs on CPU-only or GPU-only: './trns -g 0' or './trns -t 0'");
 #endif
     }
 
     void usage() {
-        cerr << "\nUsage:  ./trns [options]"
+        fprintf(stderr,
+                "\nUsage:  ./trns [options]"
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
@@ -132,7 +133,7 @@ struct Params {
                 "\n    -m <M>    matrix height (default=197)"
                 "\n    -n <N>    matrix width (default=35588)"
                 "\n    -s <M>    super-element size (default=32)"
-                "\n";
+                "\n");
     }
 };
 
@@ -193,6 +194,7 @@ int main(int argc, char **argv) {
 
     // Initialize
     timer.start("Initialization");
+    const int max_wi = ocl.max_work_items(ocl.clKernel);
     read_input(h_in_out, p);
     memset((void *)h_finished, 0, sizeof(std::atomic_int) * finished_size);
     h_head[0].store(0);
@@ -241,26 +243,26 @@ int main(int argc, char **argv) {
 
 // Launch GPU threads
         if(p.n_work_groups > 0) {
+            clSetKernelArg(ocl.clKernel, 0, sizeof(int), &p.m);
+            clSetKernelArg(ocl.clKernel, 1, sizeof(int), &tiled_n);
+            clSetKernelArg(ocl.clKernel, 2, sizeof(int), &p.s);
+            clSetKernelArg(ocl.clKernel, 3, sizeof(int), NULL);
+            clSetKernelArg(ocl.clKernel, 4, sizeof(int), NULL);
 #ifdef OCL_2_0
-            clSetKernelArgSVMPointer(ocl.clKernel, 0, d_in_out);
+            clSetKernelArgSVMPointer(ocl.clKernel, 5, d_in_out);
+            clSetKernelArgSVMPointer(ocl.clKernel, 6, d_finished);
+            clSetKernelArgSVMPointer(ocl.clKernel, 7, d_head);
 #else
-            clSetKernelArg(ocl.clKernel, 0, sizeof(cl_mem), &d_in_out);
+            clSetKernelArg(ocl.clKernel, 5, sizeof(cl_mem), &d_in_out);
+            clSetKernelArg(ocl.clKernel, 6, sizeof(cl_mem), &d_finished);
+            clSetKernelArg(ocl.clKernel, 7, sizeof(cl_mem), &d_head);
 #endif
-            clSetKernelArg(ocl.clKernel, 1, sizeof(int), &p.m);
-            clSetKernelArg(ocl.clKernel, 2, sizeof(int), &tiled_n);
-            clSetKernelArg(ocl.clKernel, 3, sizeof(int), &p.s);
-#ifdef OCL_2_0
-            clSetKernelArgSVMPointer(ocl.clKernel, 4, d_finished);
-            clSetKernelArgSVMPointer(ocl.clKernel, 5, d_head);
-#else
-            clSetKernelArg(ocl.clKernel, 4, sizeof(cl_mem), &d_finished);
-            clSetKernelArg(ocl.clKernel, 5, sizeof(cl_mem), &d_head);
-#endif
-            clSetKernelArg(ocl.clKernel, 6, sizeof(int), NULL);
-            clSetKernelArg(ocl.clKernel, 7, sizeof(int), NULL);
+
             // Kernel launch
             size_t ls[1] = {(size_t)p.n_work_items};
             size_t gs[1] = {(size_t)p.n_work_groups * p.n_work_items};
+            assert(ls[0] <= max_wi && 
+                "The work-group size is greater than the maximum work-group size that can be used to execute this kernel");
             clStatus = clEnqueueNDRangeKernel(ocl.clCommandQueue, ocl.clKernel, 1, NULL, gs, ls, 0, NULL, NULL);
             CL_ERR();
         }

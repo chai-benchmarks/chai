@@ -41,10 +41,10 @@
 #include "support/common.h"
 
 // OpenCL kernel ------------------------------------------------------------------------------------------
-__kernel void SSSP_gpu(__global Node *graph_nodes_av, __global Edge *graph_edges_av, __global atomic_int *ptr_cost,
-    __global atomic_int *ptr_color, __global int *ptr_q1, __global int *ptr_q2, __global int *ptr_num_t,
-    __global atomic_int *ptr_head, __global atomic_int *ptr_tail, __global atomic_int *ptr_threads_end,
-    __global atomic_int *ptr_threads_run, __global int *ptr_overflow, __global atomic_int *ptr_gray_shade,
+__kernel void SSSP_gpu(__global Node *graph_nodes_av, __global Edge *graph_edges_av, __global atomic_int *cost,
+    __global atomic_int *color, __global int *q1, __global int *q2, __global int *n_t,
+    __global atomic_int *head, __global atomic_int *tail, __global atomic_int *threads_end,
+    __global atomic_int *threads_run, __global int *overflow, __global atomic_int *gray_shade,
     __local int *tail_bin, __local int *l_qout, __local int *shift, __local int *base, int LIMIT, int CPU) {
 
     const int tid     = get_local_id(0);
@@ -52,24 +52,24 @@ __kernel void SSSP_gpu(__global Node *graph_nodes_av, __global Edge *graph_edges
     const int MAXWG   = get_num_groups(0);
     const int WG_SIZE = get_local_size(0);
 
-    __global int *ptr_qin, *ptr_qout;
+    __global int *qin, *qout;
 
     int iter = 1;
 
-    while(*ptr_num_t != 0) {
+    while(*n_t != 0) {
 
         // Swap queues
         if(iter % 2 == 0) {
-            ptr_qin  = ptr_q1;
-            ptr_qout = ptr_q2;
+            qin  = q1;
+            qout = q2;
         } else {
-            ptr_qin  = ptr_q2;
-            ptr_qout = ptr_q1;
+            qin  = q2;
+            qout = q1;
         }
 
-        if((*ptr_num_t >= LIMIT) | (CPU == 0)) {
+        if((*n_t >= LIMIT) | (CPU == 0)) {
 
-            int gray_shade = atomic_load(&ptr_gray_shade[0]);
+            int gray_shade_local = atomic_load(&gray_shade[0]);
 
             if(tid == 0) {
                 // Reset queue
@@ -78,22 +78,22 @@ __kernel void SSSP_gpu(__global Node *graph_nodes_av, __global Edge *graph_edges
 
             // Fetch frontier elements from the queue
             if(tid == 0)
-                *base = atomic_fetch_add(&ptr_head[0], WG_SIZE);
+                *base = atomic_fetch_add(&head[0], WG_SIZE);
             barrier(CLK_LOCAL_MEM_FENCE);
 
             int my_base = *base;
-            while(my_base < *ptr_num_t) {
+            while(my_base < *n_t) {
 
                 // If local queue might overflow
                 if(*tail_bin >= W_QUEUE_SIZE / 2) {
                     if(tid == 0) {
-                        // Add local tail_bin to ptr_tail
-                        *shift = atomic_fetch_add(&ptr_tail[0], *tail_bin);
+                        // Add local tail_bin to tail
+                        *shift = atomic_fetch_add(&tail[0], *tail_bin);
                     }
                     barrier(CLK_LOCAL_MEM_FENCE);
                     int local_shift = tid;
                     while(local_shift < *tail_bin) {
-                        ptr_qout[*shift + local_shift] = l_qout[local_shift];
+                        qout[*shift + local_shift] = l_qout[local_shift];
                         // Multiple threads are copying elements at the same time, so we shift by multiple elements for next iteration
                         local_shift += WG_SIZE;
                     }
@@ -105,12 +105,12 @@ __kernel void SSSP_gpu(__global Node *graph_nodes_av, __global Edge *graph_edges
                     barrier(CLK_LOCAL_MEM_FENCE);
                 }
 
-                if(my_base + tid < *ptr_num_t && *ptr_overflow == 0) {
+                if(my_base + tid < *n_t && *overflow == 0) {
                     // Visit a node from the current frontier
-                    int pid = ptr_qin[my_base + tid];
+                    int pid = qin[my_base + tid];
                     //////////////// Visit node ///////////////////////////
-                    atomic_store(&ptr_color[pid], BLACK); // Node visited
-                    int  cur_cost = atomic_load(&ptr_cost[pid]); // Look up shortest-path distance to this node
+                    atomic_store(&color[pid], BLACK); // Node visited
+                    int  cur_cost = atomic_load(&cost[pid]); // Look up shortest-path distance to this node
                     Node cur_node;
                     cur_node.x = graph_nodes_av[pid].x;
                     cur_node.y = graph_nodes_av[pid].y;
@@ -120,16 +120,16 @@ __kernel void SSSP_gpu(__global Node *graph_nodes_av, __global Edge *graph_edges
                         cur_edge.x = graph_edges_av[i].x;
                         cur_edge.y = graph_edges_av[i].y;
                         int id     = cur_edge.x;
-                        int cost   = cur_edge.y;
-                        cost += cur_cost;
-                        int orig_cost = atomic_fetch_max(&ptr_cost[id], cost);
-                        if(orig_cost < cost) {
-                            int old_color = atomic_fetch_max(&ptr_color[id], gray_shade);
-                            if(old_color != gray_shade) {
+                        int cost_local   = cur_edge.y;
+                        cost_local += cur_cost;
+                        int orig_cost = atomic_fetch_max(&cost[id], cost_local);
+                        if(orig_cost < cost_local) {
+                            int old_color = atomic_fetch_max(&color[id], gray_shade_local);
+                            if(old_color != gray_shade_local) {
                                 // Push to the queue
                                 int tail_index = atomic_add(tail_bin, 1);
                                 if(tail_index >= W_QUEUE_SIZE) {
-                                    *ptr_overflow = 1;
+                                    *overflow = 1;
                                     break;
                                 } else
                                     l_qout[tail_index] = id;
@@ -138,20 +138,20 @@ __kernel void SSSP_gpu(__global Node *graph_nodes_av, __global Edge *graph_edges
                     }
                 }
                 if(tid == 0)
-                    *base = atomic_fetch_add(&ptr_head[0], WG_SIZE); // Fetch more frontier elements from the queue
+                    *base = atomic_fetch_add(&head[0], WG_SIZE); // Fetch more frontier elements from the queue
                 barrier(CLK_LOCAL_MEM_FENCE);
                 my_base = *base;
             }
             /////////////////////////////////////////////////////////
             // Compute size of the output and allocate space in the global queue
             if(tid == 0) {
-                *shift = atomic_fetch_add(&ptr_tail[0], *tail_bin);
+                *shift = atomic_fetch_add(&tail[0], *tail_bin);
             }
             barrier(CLK_LOCAL_MEM_FENCE);
             ///////////////////// CONCATENATE INTO HOST COHERENT MEMORY /////////////////////
             int local_shift = tid;
             while(local_shift < *tail_bin) {
-                ptr_qout[*shift + local_shift] = l_qout[local_shift];
+                qout[*shift + local_shift] = l_qout[local_shift];
                 // Multiple threads are copying elements at the same time, so we shift by multiple elements for next iteration
                 local_shift += WG_SIZE;
             }
@@ -159,37 +159,37 @@ __kernel void SSSP_gpu(__global Node *graph_nodes_av, __global Edge *graph_edges
         }
 
         // Synchronization
-        if(*ptr_overflow == 1) {
+        if(*overflow == 1) {
             break;
         }
 
         if(CPU) { // if CPU is available
             iter++;
             if(tid == 0) {
-                atomic_fetch_add(&ptr_threads_end[0], WG_SIZE);
+                atomic_fetch_add(&threads_end[0], WG_SIZE);
 
-                while(atomic_load(&ptr_threads_run[0]) < iter) {
+                while(atomic_load(&threads_run[0]) < iter) {
                 }
             }
         } else { // if GPU only
             iter++;
             if(tid == 0)
-                atomic_fetch_add(&ptr_threads_end[0], WG_SIZE);
+                atomic_fetch_add(&threads_end[0], WG_SIZE);
             if(gtid == 0) {
-                while(atomic_load(&ptr_threads_end[0]) != MAXWG * WG_SIZE) {
+                while(atomic_load(&threads_end[0]) != MAXWG * WG_SIZE) {
                 }
-                *ptr_num_t = atomic_load(&ptr_tail[0]);
-                atomic_store(&ptr_tail[0], 0);
-                atomic_store(&ptr_head[0], 0);
-                atomic_store(&ptr_threads_end[0], 0);
+                *n_t = atomic_load(&tail[0]);
+                atomic_store(&tail[0], 0);
+                atomic_store(&head[0], 0);
+                atomic_store(&threads_end[0], 0);
                 if(iter % 2 == 0)
-                    atomic_store(&ptr_gray_shade[0], GRAY0);
+                    atomic_store(&gray_shade[0], GRAY0);
                 else
-                    atomic_store(&ptr_gray_shade[0], GRAY1);
-                atomic_fetch_add(&ptr_threads_run[0], 1);
+                    atomic_store(&gray_shade[0], GRAY1);
+                atomic_fetch_add(&threads_run[0], 1);
             }
             if(tid == 0 && gtid != 0) {
-                while(atomic_load(&ptr_threads_run[0]) < iter) {
+                while(atomic_load(&threads_run[0]) < iter) {
                 }
             }
         }
