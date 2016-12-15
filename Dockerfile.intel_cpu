@@ -1,0 +1,56 @@
+FROM ubuntu:14.04
+
+ENV DEBIAN_FRONTEND noninteractive
+
+
+RUN apt-get update && apt-get install --no-install-recommends -y libopencv-dev
+RUN apt-get install --no-install-recommends -y alien wget build-essential opencl-headers
+RUN apt-get clean \
+ && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+ENV RUNTIME_URL="http://registrationcenter-download.intel.com/akdlm/irc_nas/9019/opencl_runtime_16.1.1_x64_ubuntu_6.4.0.25.tgz"
+
+RUN wget ${RUNTIME_URL}
+RUN TAR=$(basename ${RUNTIME_URL}) \
+    && DIR=$(basename ${RUNTIME_URL} .tgz) \
+    && tar -xf ${TAR} \
+    && for i in ${DIR}/rpm/*.rpm; do alien --to-deb $i; done
+
+# Install the debian packages.
+RUN dpkg -i *.deb
+
+# RUN find / -name "*CL*"
+# RUN ls /usr/include
+# RUN ls /usr/local/include
+# RUN ls /opt/intel/opencl-1.2-6.4.0.25
+# RUN ls /opt/intel/opencl-1.2-6.4.0.25/lib64
+RUN mkdir -p /etc/OpenCL/vendors/ \
+    && echo "/opt/intel/opencl-1.2-6.4.0.25/lib64/libintelocl.so" > /etc/OpenCL/vendors/intel.icd
+
+# Make the OpenCL files visible to the container
+ADD ./OpenCL1.2 chai/OpenCL1.2
+# ADD ./OpenCL2.0 chai/OpenCL2.0
+
+# Build  OpenCL 1.2 version of all benchmarks
+RUN export CHAI_OCL_LIB=/opt/intel/opencl-1.2-6.4.0.25/lib64 \
+    && export CHAI_OCL_INC=/usr/include \
+     && cd chai/OpenCL1.2 \
+     && for bench in *; do \
+       echo $bench; \
+       cd $bench; \
+       make -j; \
+       cd ..; \
+     done
+
+ENV LD_LIBRARY_PATH /opt/intel/opencl-1.2-6.4.0.25/lib64
+
+# Build  OpenCL 2.0 version of all benchmarks
+# RUN export CHAI_OCL_LIB=/opt/intel/opencl-1.2-6.4.0.25/lib64 \
+#     && export CHAI_OCL_INC=/usr/include \
+#      && cd chai/OpenCL2.0\
+#      && for bench in *; do \
+#        echo $bench; \
+#        cd $bench; \
+#        make -j; \
+#        cd ..; \
+#      done
