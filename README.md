@@ -20,3 +20,17 @@ To build the docker image, use
 To run a benchmark (for example, BS), do
 
     nvidia-docker run -it chai bash -c "cd chai/OpenCL1.2/BS/ && ./bs"
+
+## Docker: Running OpenCL 1.2 and 2.0 Benchmarks with the Intel OpenCL CPU Stacks
+
+Install `docker` for your system.
+
+To build the docker image for OpenCL 1.2 and 2.0 respectively, use
+
+    docker build . -f Dockerfile.intel_ocl1.2_cpu -t chai-intel-1.2
+    docker build . -f Dockerfile.intel_ocl2.0_cpu -t chai-intel-2.0
+
+To run a benchmark (for example, BS) from the two images, use
+
+    docker run -it chai-intel-1.2 bash -c "cd chai/OpenCL1.2/BS/ && ./bs"
+    docker run -it chai-intel-2.0 bash -c "cd chai/OpenCL2.0/BS/ && ./bs"
