@@ -1,0 +1,39 @@
+FROM ubuntu:16.04
+
+ENV DEBIAN_FRONTEND noninteractive
+
+
+RUN apt-get update && apt-get install --no-install-recommends -y libopencv-dev
+RUN apt-get install --no-install-recommends -y alien wget g++ unzip
+RUN apt-get clean \
+ && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+ENV DEVEL_URL="https://software.intel.com/file/531197/download"
+
+# Download and install the Intel OpenCL 2.0 headers
+RUN wget ${DEVEL_URL} -O download.zip --no-check-certificate \
+    && unzip download.zip \
+    && rm -vf download.zip *.tar.xz*
+RUN alien --to-deb *.rpm
+# Install the debian packages.
+RUN dpkg -i *.deb
+ENV CHAI_OCL_INC /opt/intel/opencl/include
+ENV CHAI_OCL_LIB /opt/intel/opencl
+
+RUN ls /opt/intel
+RUN ls /opt/intel/opencl
+RUN cat /etc/OpenCL/vendors/intel.icd
+
+# Make the OpenCL files visible to the container
+ADD ./OpenCL2.0 chai/OpenCL2.0
+
+ENV LD_LIBRARY_PATH /opt/intel/opencl
+
+# Build  OpenCL 2.0 version of all benchmarks
+RUN cd chai/OpenCL2.0 \
+    && for bench in *; do \
+         echo $bench; \
+         cd $bench; \
+         make -j; \
+         cd ..; \
+       done
