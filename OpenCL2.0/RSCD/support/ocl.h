@@ -35,6 +35,7 @@
 
 #include <CL/cl.h>
 #include <fstream>
+#include <iostream>
 
 // Allocation error checking
 #define ERR_1(v1)                                                                                                      \
