@@ -109,6 +109,10 @@ struct OpenCLSetup {
 
         std::filebuf clFile;
         clFile.open("kernel.cl", std::ios::in);
+        if (!clFile.is_open()) {
+            std::cerr << "Unable to open ./kernel.cl. Exiting...\n";
+            exit(EXIT_FAILURE);
+        }
         std::istream in(&clFile);
         std::string  clCode(std::istreambuf_iterator<char>(in), (std::istreambuf_iterator<char>()));
 
