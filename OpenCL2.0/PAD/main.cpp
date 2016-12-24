@@ -162,7 +162,7 @@ void read_input(T *input, const Params &p) {
 int main(int argc, char **argv) {
 
     const Params p(argc, argv);
-    OpenCLSetup  ocl(p.device, p.platform);
+    OpenCLSetup  ocl(p.platform, p.device);
     Timer        timer;
     cl_int       clStatus;
 
