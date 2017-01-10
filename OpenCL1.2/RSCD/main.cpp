@@ -371,7 +371,7 @@ int main(int argc, char **argv) {
         // Copy back
         if(rep >= p.n_warmup)
             timer.start("Copy Back and Merge");
-        int d_candidates;
+        int d_candidates = 0;
         if(p.alpha < 1.0) {
             clStatus = clEnqueueReadBuffer(
                 ocl.clCommandQueue, d_g_out_id, CL_TRUE, 0, sizeof(int), &d_candidates, 0, NULL, NULL);
