@@ -125,7 +125,7 @@ struct OpenCLSetup {
         CL_ERR();
 
         char clOptions[50];
-        sprintf(clOptions, "-I. -cl-std=CL2.0");
+        sprintf(clOptions, "-I. -cl-std=CL1.2");
 
         clStatus = clBuildProgram(clProgram, 0, NULL, clOptions, NULL, NULL);
         if(clStatus == CL_BUILD_PROGRAM_FAILURE) {
