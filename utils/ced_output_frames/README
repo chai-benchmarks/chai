@@ -1,0 +1,25 @@
+
+Generate output frames for comparison purposes in CEDD and CEDT
+
+Compilation instructions:
+
+    make
+
+Execution instructions
+
+    ./output_frames
+
+For more options:
+
+    ./output_frames -h
+
+Note:
+The default output folder is "./"
+It is recommended to create an output folder, and use -o to specify it.
+
+Acknowledgements:
+Sean Kelley (https://github.com/smskelley/canny-opencl)
+
+Read more:
+J. Canny, “A computational approach to edge detection,” Pattern Analysis and 
+Machine Intelligence, IEEE Transactions on, no. 6, pp. 679–698, 1986.

@@ -1,0 +1,18 @@
+
+Convert frames of a video to the format needed by CEDD and CEDT
+
+Compilation instructions:
+
+    make
+
+Execution instructions
+
+    ./convert
+
+For more options:
+
+    ./convert -h
+
+Note:
+The default output folder is "./"
+It is recommended to create an output folder, and use -o to specify it.

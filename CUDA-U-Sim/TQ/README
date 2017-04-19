@@ -1,0 +1,20 @@
+
+Task queue system (TQ)
+
+Compilation instructions:
+
+    make
+
+Execution instructions
+
+    ./tq
+
+For more options:
+
+    ./tq -h
+
+
+Read more:
+L. Chen, O. Villa, S. Krishnamoorthy, and G. Gao, “Dynamic load balancing on 
+single- and multi-GPU systems,” in Parallel Distributed Processing, IEEE 
+International Symposium on, 2010.

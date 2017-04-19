@@ -1,0 +1,20 @@
+
+Single-Source Shortest Path (SSSP)
+
+Compilation instructions:
+
+    make
+
+Execution instructions
+
+    ./sssp
+
+For more options:
+
+    ./sssp -h
+
+
+Read more:
+L. Luo, M. Wong, and W.-m. Hwu, “An effective GPU implementation of 
+breadth-first search,” in Proceedings of the 47th Design Automation Conference, 
+2010.

@@ -1,0 +1,28 @@
+
+Canny Edge Detection - task partitioning (CEDT)
+
+Compilation instructions:
+
+    make
+
+Execution instructions
+
+    ./cedt
+
+For more options:
+
+    ./cedt -h
+
+
+Note:
+The input folder contains frames from a sample video. In order to generate frames 
+with a format suitable for this benchmark, use convert_frames in utils folder.
+The output folder contains output frames for comparison purposes. In order to 
+generate output frames, use ced_output_frames in utils folder.
+
+Acknowledgements:
+Sean Kelley (https://github.com/smskelley/canny-opencl)
+
+Read more:
+J. Canny, “A computational approach to edge detection,” Pattern Analysis and 
+Machine Intelligence, IEEE Transactions on, no. 6, pp. 679–698, 1986.

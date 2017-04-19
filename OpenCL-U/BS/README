@@ -1,0 +1,19 @@
+
+Bézier Surface (BS)
+
+Compilation instructions:
+
+    make
+
+Execution instructions
+
+    ./bs
+
+For more options:
+
+    ./bs -h
+
+
+Acknowledgements:
+Rafael Palomar
+Paul Bourke (http://paulbourke.net/geometry/bezier/index.html)
