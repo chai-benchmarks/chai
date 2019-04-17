@@ -55,7 +55,7 @@ For help instructions:
   ```
 
 ## Chai Benchmarks for CPU-FPGA Systems
-The FPGA synthesizable version of Chai benchmarks can be found in this <a href="https://github.com/hst10/Chai-FPGA" target="_blank">Chai-FPGA</a> repository. 
+The FPGA synthesizable version of Chai benchmarks can be found in this <a href="https://github.com/chai-benchmarks/chai-fpga" target="_blank">chai-fpga</a> repository. 
 
 ## Citation
 
