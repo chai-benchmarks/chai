@@ -54,9 +54,6 @@ For help instructions:
   ./bfs -h
   ```
 
-## Chai Benchmarks for CPU-FPGA Systems
-The FPGA synthesizable version of Chai benchmarks can be found in this <a href="https://github.com/chai-benchmarks/chai-fpga" target="_blank">chai-fpga</a> repository. 
-
 ## Citation
 
 Please cite the following paper if you find our benchmark suite useful:
@@ -66,3 +63,5 @@ Please cite the following paper if you find our benchmark suite useful:
   In *Proceedings of IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS)*, 2017.
   [\[bibtex\]](https://chai-benchmarks.github.io/assets/ispass17.bib)
 
+## Chai Benchmarks for CPU-FPGA Systems
+The FPGA synthesizable version of Chai benchmarks can be found in this <a href="https://github.com/chai-benchmarks/chai-fpga" target="_blank">chai-fpga</a> repository. 
