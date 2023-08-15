@@ -1,0 +1,3 @@
+[submodule "HIP-U-gem5/gem5"]
+	path = HIP-U-gem5/gem5
+	url = https://github.com/gem5/gem5.git
