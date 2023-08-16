@@ -67,7 +67,7 @@ struct Params {
         n_threads       = 2;
 				n_warmup        = 0;
         n_reps          = 1;
-        file_name       = "input/NYR_input.dat";
+        file_name       = "gem5-resources/src/gpu/chai/HIP-U-gem5/BFS/input/NYR_input.dat";
         comparison_file = "output/NYR_bfs_BFS.out";
         switching_limit = 128;
         int opt;
@@ -124,7 +124,6 @@ void read_input_size(int &n_nodes, int &n_edges, const Params &p) {
     FILE *fp = fopen(p.file_name, "r");
     if(!fp)
       fprintf(stderr, "Failed to open file\n");
-    fprintf(stderr, "Opened file\n");
     fscanf(fp, "%d", &n_nodes);
     fscanf(fp, "%d", &n_edges);
     fprintf(stderr, "Scannign done\n");
@@ -191,7 +190,6 @@ int main(int argc, char **argv) {
     ALLOC_ERR(nodes, edges, color, cost, q1, q2);
     ALLOC_ERR(head, tail, threads_end, threads_run, num_t, overflow);
     hipDeviceSynchronize();
-    fprintf(stderr,"AM: Synced" );
     // Initialize
     int source;
     read_input(source, nodes, edges, p);
@@ -210,7 +208,6 @@ int main(int argc, char **argv) {
     overflow[0] = 0;
 
     hipDeviceSynchronize();
-    fprintf(stderr,"AM: Synced" );
 
     for(int rep = 0; rep < p.n_reps + p.n_warmup; rep++) {
 
@@ -253,7 +250,12 @@ int main(int argc, char **argv) {
         const int CPU_EXEC = (p.n_threads > 0) ? 1 : 0;
         const int GPU_EXEC = (p.n_gpu_blocks > 0 && p.n_gpu_threads > 0) ? 1 : 0;
 
-        fprintf(stderr,"AM: Launching GPU" );
+        fprintf(stderr,"AM: Launching CPU threads\n" );
+        // Launch CPU threads
+        std::thread main_thread(run_cpu_threads, nodes, edges, cost, color, q1, q2, num_t, head, tail, threads_end,
+            threads_run, p.n_threads, p.n_gpu_blocks, p.n_gpu_threads, p.switching_limit, GPU_EXEC);
+
+        fprintf(stderr,"AM: Launching GPU threads\n" );
         // Kernel launch
         if(GPU_EXEC == 1) {
             hipError_t cudaStatus = call_BFS_gpu(p.n_gpu_blocks, p.n_gpu_threads, nodes, edges, (int*)cost,
@@ -265,13 +267,7 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__);
                 exit(-1);
             }
-
         }
-
-        fprintf(stderr,"AM: Launching CPU" );
-        // Launch CPU threads
-        std::thread main_thread(run_cpu_threads, nodes, edges, cost, color, q1, q2, num_t, head, tail, threads_end,
-            threads_run, p.n_threads, p.n_gpu_blocks, p.n_gpu_threads, p.switching_limit, GPU_EXEC);
 
         hipDeviceSynchronize();
         main_thread.join();

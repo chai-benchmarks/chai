@@ -1,5 +1,5 @@
 CPPSRC = main.cpp kernel.cu kernel.cpp
-EXECUTABLE = bfs.gem5
+EXECUTABLE = bs.gem5
 # BC has a compilation error in host code with ROCm 4.0, so O2 and O3 do not
 # pass even on real GPUs
 OPTS = -O1
@@ -17,10 +17,10 @@ BIN_DIR ?= ./bin
 all: $(BIN_DIR)/$(EXECUTABLE)
 
 $(BIN_DIR)/$(EXECUTABLE): $(CPPSRC) $(BIN_DIR)
-	$(HIPCC) $(OPTS) --amdgpu-target=gfx801,gfx803 $(CXXFLAGS) $(CPPSRC) -o $(BIN_DIR)/$(EXECUTABLE) $(CFLAGS) $(LDFLAGS)
+	@$(HIPCC) $(OPTS) --amdgpu-target=gfx801,gfx803 $(CXXFLAGS) $(CPPSRC) -o $(BIN_DIR)/$(EXECUTABLE) $(CFLAGS) $(LDFLAGS)
 
 $(BIN_DIR):
-	mkdir -p $(BIN_DIR)
+	@mkdir -p $(BIN_DIR)
 
 clean:
 	rm -rf $(BIN_DIR)
