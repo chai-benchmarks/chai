@@ -70,7 +70,7 @@ struct Params {
         n_warmup      = 0;
         n_reps        = 1;
         alpha         = 0.1;
-        file_name     = "gem5-resources/src/gpu/chai/HIP-U-gem5/BS/input/control.txt";
+        file_name     = "input/control.txt";
         in_size_i = in_size_j = 3;
         out_size_i = out_size_j = 300;
         int opt;

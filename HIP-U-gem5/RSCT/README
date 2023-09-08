@@ -1,0 +1,27 @@
+
+RANSAC - task partitioning (RSCT)
+
+Compilation instructions:
+
+    make
+
+Execution instructions
+
+    ./rsct
+
+For more options:
+
+    ./rsct -h
+
+
+Note:
+The input folder contains a file with a list of flow vectors from a video frame 
+with the format (x, y, vx, vy). (x, y) is the tail of the vector, and (vx, vy) is 
+the head.
+The input file could be synthetically generated with every x, y, vx, and vy within 
+frame dimensions.
+
+Read more:
+M. A. Fischler and R. C. Bolles, “Random sample consensus: a paradigm for model 
+fitting with applications to image analysis and automated cartography,” 
+Communications of the ACM, vol. 24, pp. 381–395, June 1981.

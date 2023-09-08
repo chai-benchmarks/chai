@@ -62,12 +62,12 @@ struct Params {
 
     Params(int argc, char **argv) {
         device          = 0;
-        n_gpu_threads   = 256;
-        n_gpu_blocks    = 8;
+        n_gpu_threads   = 64;
+        n_gpu_blocks    = 32;
         n_threads       = 2;
 				n_warmup        = 0;
         n_reps          = 1;
-        file_name       = "gem5-resources/src/gpu/chai/HIP-U-gem5/BFS/input/NYR_input.dat";
+        file_name       = "input/NYR_input.dat";
         comparison_file = "output/NYR_bfs_BFS.out";
         switching_limit = 128;
         int opt;
@@ -268,7 +268,7 @@ int main(int argc, char **argv) {
                 exit(-1);
             }
         }
-
+        fprintf(stderr, "AM: System level barrier\n");
         hipDeviceSynchronize();
         main_thread.join();
 

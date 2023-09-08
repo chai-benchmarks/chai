@@ -52,10 +52,10 @@ void run_cpu_threads(Node *h_graph_nodes, Edge *h_graph_edges, std::atomic_int *
     std::atomic_int *threads_end, std::atomic_int *threads_run, int n_threads, int max_wg, int wg_size,
     int LIMIT, const int GPU) {
 ///////////////// Run CPU worker threads /////////////////////////////////
-    printf("Starting CPU threads\n");
+    printf("Starting %d CPU threads\n", n_threads);
     std::vector<std::thread> cpu_threads;
     for(int k = 0; k < n_threads; k++) {
-        printf("thread_id %d\n", k);
+        printf("CPU thread_id %d\n", k);
         cpu_threads.push_back(std::thread([=]() {
 
             int *qin, *qout;
@@ -63,6 +63,7 @@ void run_cpu_threads(Node *h_graph_nodes, Edge *h_graph_edges, std::atomic_int *
             int iter = 1;
 
             while(*n_t != 0) {
+                printf("CPU n_t = %d\n", *n_t);
 
                 // Swap queues
                 if(iter % 2 == 0) {
@@ -74,13 +75,16 @@ void run_cpu_threads(Node *h_graph_nodes, Edge *h_graph_edges, std::atomic_int *
                 }
 
                 if(*n_t < LIMIT || GPU == 0) {
+                    printf("CPU under limit\n");
 
                     int base = (head)->fetch_add(1); // Fetch new node from input queue
                     while(base < *n_t) {
+                        printf("CPU limit n_t = %d\n", base);
                         int pid = qin[base];
                         cost[pid].store(iter); // Node visited
                         // For each outgoing edge
                         for(int i = h_graph_nodes[pid].x; i < (h_graph_nodes[pid].y + h_graph_nodes[pid].x); i++) {
+                            printf("CPU limit iter = %d | max: %d\n", i, h_graph_nodes[pid].y + h_graph_nodes[pid].x);
                             int id        = h_graph_edges[i].x;
                             int old_color = atomic_maximum(&color[id], BLACK);
                             if(old_color < BLACK) {
@@ -92,20 +96,25 @@ void run_cpu_threads(Node *h_graph_nodes, Edge *h_graph_edges, std::atomic_int *
                         base = (head)->fetch_add(1); // Fetch new node from input queue
                     }
                 }
+                printf("CPU threads syncing\n");
                 // Synchronization
                 iter++;
                 (threads_end)->fetch_add(1);
                 if(k == 0) {
+                    printf("CPU k is 0\n");
                     while((threads_end)->load() != GPU * max_wg * wg_size + n_threads) {
                     }
+                    printf("CPU k=0 ended\n");
                     *n_t = (tail)->load();
                     (tail)->store(0);
                     (head)->store(0);
                     (threads_end)->store(0);
                     (threads_run)->fetch_add(1);
                 } else {
+                    printf("CPU k = %d\n", k);
                     while((threads_run)->load() < iter) {
                     }
+                    printf("CPU k!=0 ended\n");
                 }
             }
         }));
