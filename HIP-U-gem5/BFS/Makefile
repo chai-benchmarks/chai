@@ -2,7 +2,7 @@ CPPSRC = main.cpp kernel.cu kernel.cpp
 EXECUTABLE = bfs.gem5
 # BC has a compilation error in host code with ROCm 4.0, so O2 and O3 do not
 # pass even on real GPUs
-OPTS = -O1
+OPTS =
 
 HIP_PATH ?= /opt/rocm/hip
 HIPCC = $(HIP_PATH)/bin/hipcc

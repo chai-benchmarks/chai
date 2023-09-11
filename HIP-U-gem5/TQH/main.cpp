@@ -165,7 +165,6 @@ void read_input(int *data, task_t *task_pool, const Params &p) {
 int main(int argc, char **argv) {
 
     const Params p(argc, argv);
-    cudaError_t  cudaStatus;
 
     // Allocate
     int     frame_size = p.n * p.m;
@@ -177,8 +176,7 @@ int main(int argc, char **argv) {
     std::atomic_int *n_written_tasks = (std::atomic_int*)malloc(sizeof(std::atomic_int) * NUM_TASK_QUEUES);
     std::atomic_int *n_consumed_tasks = (std::atomic_int*)malloc(sizeof(std::atomic_int) * NUM_TASK_QUEUES);
     task_t *task_pool_backup = (task_t *)malloc(p.pool_size * sizeof(task_t));
-    cudaThreadSynchronize();
-    CUDA_ERR();
+    hipDeviceSynchronize();
     ALLOC_ERR(task_pool, task_queues, data_pool, histo);
     ALLOC_ERR(n_task_in_queue, n_written_tasks, n_consumed_tasks, task_pool_backup);
 
@@ -225,12 +223,12 @@ int main(int argc, char **argv) {
             p.n_gpu_blocks);
 
         // Kernel launch
-        cudaStatus = call_TQHistogram_gpu(p.n_gpu_blocks, p.n_gpu_threads, task_queues, (int*)n_task_in_queue, (int*)n_written_tasks, (int*)n_consumed_tasks,
+        hipError_t cudaStatus = call_TQHistogram_gpu(p.n_gpu_blocks, p.n_gpu_threads, task_queues, (int*)n_task_in_queue, (int*)n_written_tasks, (int*)n_consumed_tasks,
             (int*)histo, data_pool, p.queue_size, frame_size, p.n_bins, 
             sizeof(int) + sizeof(task_t) + p.n_bins * sizeof(int));
-        CUDA_ERR();
+        if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };;
 
-        cudaThreadSynchronize();
+        hipDeviceSynchronize();
         main_thread.join();
 
         //m5_work_end(0, 0);

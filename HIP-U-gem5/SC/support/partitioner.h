@@ -144,11 +144,9 @@ __device__ inline int gpu_first(Partitioner *p) {
 #ifndef _CUDA_COMPILER_
 
 inline bool cpu_more(const Partitioner *p) {
-#ifdef CUDA_8_0
     if(p->strategy == DYNAMIC_PARTITIONING) {
         return (p->current < p->n_tasks);
     } else
-#endif
     {
         return (p->current < p->cut);
     }
@@ -167,11 +165,9 @@ __device__ inline bool gpu_more(const Partitioner *p) {
 #ifndef _CUDA_COMPILER_
 
 inline int cpu_next(Partitioner *p) {
-#ifdef CUDA_8_0
     if(p->strategy == DYNAMIC_PARTITIONING) {
         p->current = p->worklist->fetch_add(1);
     } else
-#endif
     {
         p->current = p->current + p->n_threads;
     }
@@ -181,7 +177,6 @@ inline int cpu_next(Partitioner *p) {
 #else
 
 __device__ inline int gpu_next(Partitioner *p) {
-#ifdef CUDA_8_0
     if(p->strategy == DYNAMIC_PARTITIONING) {
         if(threadIdx.y == 0 && threadIdx.x == 0) {
             p->tmp[0] = atomicAdd(p->worklist, 1); // p->tmp[0] = atomicAdd_system(p->worklist, 1);
@@ -189,7 +184,6 @@ __device__ inline int gpu_next(Partitioner *p) {
         __syncthreads();
         p->current = p->tmp[0];
     } else
-#endif
     {
         p->current = p->current + gridDim.x;
     }

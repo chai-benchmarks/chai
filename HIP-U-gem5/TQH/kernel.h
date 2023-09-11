@@ -33,7 +33,7 @@
  *
  */
 
-#include "cuda_runtime.h"
+#include "hip/hip_runtime.h"
 #include <atomic>
 #include <string>
 #include "support/common.h"
@@ -47,6 +47,6 @@ void run_cpu_threads(int n_threads, task_t *queues, std::atomic_int *n_task_in_q
     int *data, int gpuQueueSize, int *offset, int *last_queue, int *n_tasks, int tpi, int poolSize,
     int n_work_groups);
 
-cudaError_t call_TQHistogram_gpu(int blocks, int threads, task_t *queues, int *n_task_in_queue,
+hipError_t call_TQHistogram_gpu(int blocks, int threads, task_t *queues, int *n_task_in_queue,
     int *n_written_tasks, int *n_consumed_tasks, int *histo, int *data, int gpuQueueSize, 
     int frame_size, int n_bins, int l_mem_size);

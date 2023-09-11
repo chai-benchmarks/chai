@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /*
  * Copyright (c) 2016 University of Cordoba and University of Illinois
  * All rights reserved.
@@ -42,7 +43,7 @@ __global__ void TQHistogram_gpu(task_t *queues, int *n_task_in_queue,
     int *n_written_tasks, int *n_consumed_tasks,
     int *histo, int *data, int gpuQueueSize, int frame_size, int n_bins) {
 
-    extern __shared__ int l_mem[];
+    HIP_DYNAMIC_SHARED( int, l_mem)
     int* last_queue = l_mem;
     task_t* t = (task_t*)&last_queue[1];
     int* l_histo = (int*)&t[1];
@@ -110,16 +111,16 @@ __global__ void TQHistogram_gpu(task_t *queues, int *n_task_in_queue,
     }
 }
 
-cudaError_t call_TQHistogram_gpu(int blocks, int threads, task_t *queues, int *n_task_in_queue,
+hipError_t call_TQHistogram_gpu(int blocks, int threads, task_t *queues, int *n_task_in_queue,
     int *n_written_tasks, int *n_consumed_tasks, int *histo, int *data, int gpuQueueSize, 
     int frame_size, int n_bins, int l_mem_size){
 
     dim3 dimGrid(blocks);
     dim3 dimBlock(threads);
-    TQHistogram_gpu<<<dimGrid, dimBlock, l_mem_size>>>(queues, n_task_in_queue,
+    hipLaunchKernelGGL(TQHistogram_gpu, dim3(dimGrid), dim3(dimBlock), l_mem_size, 0, queues, n_task_in_queue,
         n_written_tasks, n_consumed_tasks, histo, data, gpuQueueSize,
         frame_size, n_bins);
     
-    cudaError_t err = cudaGetLastError();
+    hipError_t err = hipGetLastError();
     return err;
 }
