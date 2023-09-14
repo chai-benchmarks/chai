@@ -33,7 +33,7 @@
  *
  */
 
-#include "cuda_runtime.h"
+#include "hip/hip_runtime.h"
 #include <atomic>
 #include "support/common.h"
 
@@ -41,6 +41,6 @@ void run_cpu_threads(float *model_param_local, flowvector *flowvectors, int flow
     int max_iter, int error_threshold, float convergence_threshold, std::atomic_int *g_out_id, int num_threads,
     std::atomic_int *launch_gpu);
 
-cudaError_t call_RANSAC_kernel_block(int blocks, int threads, float *model_param_local, flowvector *flowvectors, 
+hipError_t call_RANSAC_kernel_block(int blocks, int threads, float *model_param_local, flowvector *flowvectors, 
     int flowvector_count, int *random_numbers, int max_iter, int error_threshold, float convergence_threshold,
 		int *g_out_id, int *model_candidate, int *outliers_candidate, int *launch_gpu, int l_mem_size);

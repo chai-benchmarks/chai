@@ -33,12 +33,12 @@
  *
  */
 
-#include <cuda_runtime.h>
+#include <hip/hip_runtime.h>
 #include <atomic>
 #include "support/common.h"
 
 void run_cpu_threads(
     unsigned int *histo, unsigned int *data, int size, int bins, int num_threads, int chunk, int cpu_bins);
 
-cudaError_t call_Histogram_kernel(int blocks, int threads, int size, int bins, int cpu_bins, 
+hipError_t call_Histogram_kernel(int blocks, int threads, int size, int bins, int cpu_bins, 
     unsigned int *data, unsigned int *histo, int l_mem_size);

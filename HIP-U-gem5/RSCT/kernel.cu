@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /*
  * Copyright (c) 2016 University of Cordoba and University of Illinois
  * All rights reserved.
@@ -42,7 +43,7 @@ __global__ void RANSAC_kernel_block(float *model_param_local, flowvector *flowve
     int flowvector_count, int *random_numbers, int max_iter, int error_threshold, float convergence_threshold,
     int *g_out_id, int *model_candidate, int *outliers_candidate, int *launch_gpu) {
 
-    extern __shared__ int l_mem[];
+    HIP_DYNAMIC_SHARED( int, l_mem)
     int* outlier_block_count = l_mem;
 
     const int tx         = threadIdx.x;
@@ -101,14 +102,14 @@ __global__ void RANSAC_kernel_block(float *model_param_local, flowvector *flowve
     }
 }
 
-cudaError_t call_RANSAC_kernel_block(int blocks, int threads, float *model_param_local, flowvector *flowvectors, 
+hipError_t call_RANSAC_kernel_block(int blocks, int threads, float *model_param_local, flowvector *flowvectors, 
     int flowvector_count, int *random_numbers, int max_iter, int error_threshold, float convergence_threshold,
     int *g_out_id, int *model_candidate, int *outliers_candidate, int *launch_gpu, int l_mem_size){
     dim3 dimGrid(blocks);
     dim3 dimBlock(threads);
-    RANSAC_kernel_block<<<dimGrid, dimBlock, l_mem_size>>>(model_param_local, flowvectors, 
+    hipLaunchKernelGGL(RANSAC_kernel_block, dim3(dimGrid), dim3(dimBlock), l_mem_size, 0, model_param_local, flowvectors, 
     flowvector_count, random_numbers, max_iter, error_threshold, convergence_threshold,
     g_out_id, model_candidate, outliers_candidate, launch_gpu);
-    cudaError_t err = cudaGetLastError();
+    hipError_t err = hipGetLastError();
     return err;
 }

@@ -106,11 +106,7 @@ struct Params {
             assert(n_gpu_blocks > 0 && "Invalid # of device blocks!");
             assert(n_threads > 0 && "Invalid # of host threads!");
         } else {
-#ifdef CUDA_8_0
             assert((n_gpu_threads > 0 && n_gpu_blocks > 0 || n_threads > 0) && "Invalid # of host + device workers!");
-#else
-            assert(0 && "Illegal value for -a");
-#endif
         }
     }
 
@@ -129,11 +125,7 @@ struct Params {
                 "\n"
                 "\nData-partitioning-specific options:"
                 "\n    -a <A>    fraction of output elements to process on host (default=0.1)"
-#ifdef CUDA_8_0
                 "\n              NOTE: Dynamic partitioning used when <A> is not between 0.0 and 1.0"
-#else
-                "\n              NOTE: <A> must be between 0.0 and 1.0"
-#endif
                 "\n"
                 "\nBenchmark-specific options:"
                 "\n    -f <F>    name of input file with control points (default=input/control.txt)"
@@ -187,56 +179,25 @@ int main(int argc, char **argv) {
     int n_tasks_i = divceil(p.out_size_i, p.n_gpu_threads);
     int n_tasks_j = divceil(p.out_size_j, p.n_gpu_threads);
     int n_tasks   = n_tasks_i * n_tasks_j;
-#ifdef CUDA_8_0
     XYZ *  h_in  = (XYZ *)malloc(in_size);
     XYZ *  h_out = (XYZ *)malloc(out_size);
     XYZ * d_in   = h_in;
     XYZ * d_out  = h_out;
     std::atomic_int * worklist = (std::atomic_int *)malloc(sizeof(std::atomic_int));
     ALLOC_ERR(h_in, h_out, worklist);
-#else
-    XYZ *  h_in        = (XYZ *)malloc(in_size);
-    XYZ *  h_out       = (XYZ *)malloc(out_size);
-    XYZ *  h_out_merge = (XYZ *)malloc(out_size);
-    XYZ* d_in;
-    hipError_t  cudaStatus = hipMalloc((void**)&d_in, in_size);
-    if(cudaStatus != hipSuccess) {
-        fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__);
-        exit(-1);
-    }
-    XYZ* d_out;
-    hipError_t  cudaStatus = hipMalloc((void**)&d_out, out_size);
-    ALLOC_ERR(h_in, h_out, h_out_merge);
-    if(cudaStatus != hipSuccess) {
-        fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__);
-        exit(-1);
-    }
-#endif
     hipDeviceSynchronize();
 
     // Initialize
     read_input(h_in, p);
     hipDeviceSynchronize();
 
-#ifndef CUDA_8_0
-    // Copy to device
-    hipError_t  cudaStatus = hipMemcpy(d_in, h_in, in_size, hipMemcpyHostToDevice);
-    hipDeviceSynchronize();
-    if(cudaStatus != hipSuccess) {
-        fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__);
-        exit(-1);
-    }
-#endif
-
     // Loop over main kernel
     for(int rep = 0; rep < p.n_warmup + p.n_reps; ++rep) {
 
 // Reset
-#ifdef CUDA_8_0
         if(p.alpha < 0.0 || p.alpha > 1.0) { // Dynamic partitioning
             worklist[0].store(0);
         }
-#endif
 
         //m5_work_begin(0, 0);
 
@@ -246,9 +207,7 @@ int main(int argc, char **argv) {
             hipError_t  cudaStatus = call_Bezier_surface(p.n_gpu_blocks, p.n_gpu_threads, n_tasks, p.alpha,
                 p.in_size_i, p.in_size_j, p.out_size_i, p.out_size_j, 
                 in_size + sizeof(int), d_in, d_out
-#ifdef CUDA_8_0
                 , (int*)worklist
-#endif
                 );
             if(cudaStatus != hipSuccess) {
                 fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__);
@@ -259,9 +218,7 @@ int main(int argc, char **argv) {
         // Launch CPU threads
         std::thread main_thread(run_cpu_threads, h_in, h_out, n_tasks, p.alpha, p.n_threads, p.n_gpu_threads, p.in_size_i,
             p.in_size_j, p.out_size_i, p.out_size_j
-#ifdef CUDA_8_0
             , worklist
-#endif
             );
 
         hipDeviceSynchronize();
@@ -270,55 +227,13 @@ int main(int argc, char **argv) {
         //m5_work_end(0, 0);
     }
 
-#ifndef CUDA_8_0
-    // Copy back
-    hipError_t  cudaStatus = hipMemcpy(h_out_merge, d_out, out_size, hipMemcpyDeviceToHost);
-    if(cudaStatus != hipSuccess) {
-        fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__);
-        exit(-1);
-    }
-    hipDeviceSynchronize();
-    // Merge
-    int cut = n_tasks * p.alpha;
-    for(unsigned int t = 0; t < cut; ++t) {
-        const int ty  = t / n_tasks_j;
-        const int tx  = t % n_tasks_j;
-        int       row = ty * p.n_gpu_threads;
-        int       col = tx * p.n_gpu_threads;
-        for(int i = row; i < row + p.n_gpu_threads; ++i) {
-            for(int j = col; j < col + p.n_gpu_threads; ++j) {
-                if(i < p.out_size_i && j < p.out_size_j) {
-                    h_out_merge[i * p.out_size_j + j] = h_out[i * p.out_size_j + j];
-                }
-            }
-        }
-    }
-#endif
-
 // Verify answer
-#ifdef CUDA_8_0
     verify(h_in, h_out, p.in_size_i, p.in_size_j, p.out_size_i, p.out_size_j);
-#else
-    verify(h_in, h_out_merge, p.in_size_i, p.in_size_j, p.out_size_i, p.out_size_j);
-#endif
 
     // Free memory
-#ifdef CUDA_8_0
     free(h_in);
     free(h_out);
     free(worklist);
-#else
-    free(h_in);
-    free(h_out);
-    free(h_out_merge);
-    hipError_t  cudaStatus = hipFree(d_in);
-    hipError_t  cudaStatus = hipFree(d_out);
-    if(cudaStatus != hipSuccess) {
-        fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__);
-        exit(-1);
-    }
-#endif
-
     printf("Test Passed\n");
     return 0;
 }

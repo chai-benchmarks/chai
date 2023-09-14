@@ -266,13 +266,16 @@ int main(int argc, char **argv) {
 
         }));
     }
+    fprintf(stderr, "AM: tying threads\n");
     std::for_each(proxy_threads.begin(), proxy_threads.end(), [](std::thread &t) { t.join(); });
 
     fprintf(stderr, "AM: System level barrier\n");
     hipDeviceSynchronize();
+    fprintf(stderr, "AM: System level barrier crossed!\n");
 
     // Verify answer
     verify(all_out_frames, in_size, p.comparison_file, p.n_warmup + p.n_reps, rowsc, colsc, rowsc, colsc);
+    fprintf(stderr, "AM: Verified\n");
 
     // Release buffers
     free(h_in_out[GPU_PROXY]);

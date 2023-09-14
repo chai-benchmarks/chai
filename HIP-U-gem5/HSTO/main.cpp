@@ -137,7 +137,7 @@ void read_input(unsigned int *input, const Params &p) {
 
     // Open input file
     unsigned short temp;
-    sprintf(dctFileName, "./input/image_VanHateren.iml");
+    sprintf(dctFileName, "./gem5-resources/src/gpu/chai/HIP-U-gem5/HSTO/input/image_VanHateren.iml");
     if((File = fopen(dctFileName, "rb")) != NULL) {
         for(int y = 0; y < p.in_size; y++) {
             int fr   = fread(&temp, sizeof(unsigned short), 1, File);
@@ -156,111 +156,56 @@ void read_input(unsigned int *input, const Params &p) {
 int main(int argc, char **argv) {
 
     const Params p(argc, argv);
-    cudaError_t  cudaStatus;
 
     // Allocate buffers
-#ifdef CUDA_8_0
     unsigned int *h_in = (unsigned int *)malloc(p.in_size * sizeof(unsigned int));
     std::atomic_uint *h_histo = (std::atomic_uint *)malloc(p.n_bins * sizeof(std::atomic_uint));
     unsigned int *    d_in    = h_in;
     std::atomic_uint *d_histo = h_histo;
     ALLOC_ERR(h_in, h_histo);
-#else
-    unsigned int *    h_in          = (unsigned int *)malloc(p.in_size * sizeof(unsigned int));
-    std::atomic_uint *h_histo       = (std::atomic_uint *)malloc(p.n_bins * sizeof(std::atomic_uint));
-    unsigned int *    h_histo_merge = (unsigned int *)malloc(p.n_bins * sizeof(unsigned int));
-    ALLOC_ERR(h_in, h_histo, h_histo_merge);
-    unsigned int *    d_in;
-    cudaStatus = cudaMalloc((void**)&d_in, p.in_size * sizeof(unsigned int));
-    unsigned int *    d_histo;
-    cudaStatus = cudaMalloc((void**)&d_histo, p.n_bins * sizeof(unsigned int));
-    if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };
-#endif
-    cudaThreadSynchronize();
+    hipDeviceSynchronize();
 
     // Initialize
     read_input(h_in, p);
-#ifdef CUDA_8_0
     for(int i = 0; i < p.n_bins; i++) {
         h_histo[i].store(0);
     }
-#else
-    memset(h_histo, 0, p.n_bins * sizeof(unsigned int));
-#endif
     int n_cpu_bins = p.n_bins * p.alpha;
-
-#ifndef CUDA_8_0
-    // Copy to device
-    cudaStatus = cudaMemcpy(d_in, h_in, p.in_size * sizeof(unsigned int), cudaMemcpyHostToDevice);
-    cudaStatus = cudaMemcpy(d_histo, h_histo, p.n_bins * sizeof(unsigned int), cudaMemcpyHostToDevice);
-    cudaThreadSynchronize();
-    if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };
-#endif
 
     for(int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
 
         // Reset
-#ifdef CUDA_8_0
         for(int i = 0; i < p.n_bins; i++) {
             h_histo[i].store(0);
         }
-#else
-        memset(h_histo, 0, p.n_bins * sizeof(unsigned int));
-        cudaStatus = cudaMemcpy(d_histo, h_histo, p.n_bins * sizeof(unsigned int), cudaMemcpyHostToDevice);
-        cudaThreadSynchronize();
-        if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };
-#endif
-
         //m5_work_begin(0, 0);
 
         // Launch GPU threads
         // Kernel launch
         if(p.n_gpu_blocks > 0) {
-            cudaStatus = call_Histogram_kernel(p.n_gpu_blocks, p.n_gpu_threads, p.in_size, p.n_bins, n_cpu_bins, 
+            hipError_t cudaStatus = call_Histogram_kernel(p.n_gpu_blocks, p.n_gpu_threads, p.in_size, p.n_bins, n_cpu_bins, 
                 d_in, (unsigned int*)d_histo, p.n_bins * sizeof(unsigned int));
-                if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };
+            if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };;
         }
 
         // Launch CPU threads
         std::thread main_thread(run_cpu_threads, (unsigned int *)h_histo, h_in, p.in_size, p.n_bins, p.n_threads,
             p.n_gpu_threads, n_cpu_bins);
 
-        cudaThreadSynchronize();
+        hipDeviceSynchronize();
         main_thread.join();
 
         //m5_work_end(0, 0);
     }
 
-#ifndef CUDA_8_0
-    // Copy back
-    cudaStatus = cudaMemcpy(h_histo_merge, d_histo, p.n_bins * sizeof(unsigned int), cudaMemcpyDeviceToHost);
-    if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };
-    cudaThreadSynchronize();
-    for(unsigned int i = 0; i < p.n_bins; ++i) {
-        h_histo_merge[i] += (unsigned int)h_histo[i];
-    }
-#endif
 
     // Verify answer
-#ifdef CUDA_8_0
     verify((unsigned int *)h_histo, h_in, p.in_size, p.n_bins);
-#else
-    verify((unsigned int *)h_histo_merge, h_in, p.in_size, p.n_bins);
-#endif
 
     // Free memory
-#ifdef CUDA_8_0
     free(h_in);
     free(h_histo);
-#else
-    free(h_in);
-    free(h_histo);
-    free(h_histo_merge);
-    cudaStatus = cudaFree(d_in);
-    cudaStatus = cudaFree(d_histo);
-#endif
-    if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };
-    cudaThreadSynchronize();
+    hipDeviceSynchronize();
 
     printf("Test Passed\n");
     return 0;

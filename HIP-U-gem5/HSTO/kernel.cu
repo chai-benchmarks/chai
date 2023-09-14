@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 /*
  * Copyright (c) 2016 University of Cordoba and University of Illinois
  * All rights reserved.
@@ -40,7 +41,7 @@
 // CUDA kernel ------------------------------------------------------------------------------------------
 __global__ void Histogram_kernel(int size, int bins, int cpu_bins, unsigned int *data, unsigned int *histo) {
 
-    extern __shared__ unsigned int l_mem[];
+    HIP_DYNAMIC_SHARED( unsigned int, l_mem)
     unsigned int* l_histo = l_mem;
 
     // Block and thread index
@@ -89,12 +90,12 @@ __global__ void Histogram_kernel(int size, int bins, int cpu_bins, unsigned int 
     }
 }
 
-cudaError_t call_Histogram_kernel(int blocks, int threads, int size, int bins, int cpu_bins, 
+hipError_t call_Histogram_kernel(int blocks, int threads, int size, int bins, int cpu_bins, 
     unsigned int *data, unsigned int *histo, int l_mem_size){
     dim3 dimGrid(blocks);
     dim3 dimBlock(threads);
-    Histogram_kernel<<<dimGrid, dimBlock, l_mem_size>>>(size, bins, cpu_bins, 
+    hipLaunchKernelGGL(Histogram_kernel, dim3(dimGrid), dim3(dimBlock), l_mem_size, 0, size, bins, cpu_bins, 
         data, histo);
-    cudaError_t err = cudaGetLastError();
+    hipError_t err = hipGetLastError();
     return err;
 }

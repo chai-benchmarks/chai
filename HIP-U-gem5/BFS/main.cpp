@@ -270,14 +270,18 @@ int main(int argc, char **argv) {
         }
         fprintf(stderr, "AM: System level barrier\n");
         hipDeviceSynchronize();
+        fprintf(stderr, "AM: beyond the barrier\n");
         main_thread.join();
+        fprintf(stderr, "AM: joined\n");
 
         //m5_work_end(0, 0);
 
     } // end of iteration
 
     // Verify answer
+    fprintf(stderr, "AM: verifying\n");
     verify(cost, n_nodes, p.comparison_file);
+    fprintf(stderr, "AM: Done!\n");
 
     // Free memory
     free(nodes);

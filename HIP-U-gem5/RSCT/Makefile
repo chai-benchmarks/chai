@@ -1,5 +1,5 @@
 CPPSRC = main.cpp kernel.cu kernel.cpp
-EXECUTABLE = hsto.gem5
+EXECUTABLE = rsct.gem5
 
 HIP_PATH ?= /opt/rocm/hip
 HIPCC = $(HIP_PATH)/bin/hipcc

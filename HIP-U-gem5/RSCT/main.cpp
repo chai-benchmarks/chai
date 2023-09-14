@@ -176,7 +176,6 @@ void read_input(flowvector *v, int *r, const Params &p) {
 int main(int argc, char **argv) {
 
     const Params p(argc, argv);
-    cudaError_t  cudaStatus;
 
     // Allocate
     int         n_flow_vectors = read_input_size(p);
@@ -190,11 +189,11 @@ int main(int argc, char **argv) {
     std::atomic_int *g_out_id = (std::atomic_int *)malloc(sizeof(std::atomic_int));
     std::atomic_int *launch_gpu = (std::atomic_int *)malloc((p.max_iter + p.n_gpu_blocks) * sizeof(std::atomic_int));
     ALLOC_ERR(flow_vector_array, random_numbers, model_candidate, outliers_candidate, model_param_local, g_out_id, launch_gpu);
-    cudaThreadSynchronize();
+    hipDeviceSynchronize();
 
     // Initialize
     read_input(flow_vector_array, random_numbers, p);
-    cudaThreadSynchronize();
+    hipDeviceSynchronize();
 
     for(int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
 
@@ -206,22 +205,22 @@ int main(int argc, char **argv) {
         for(int i = 0; i < p.max_iter + p.n_gpu_blocks; i++) {
             launch_gpu[i].store(0);
         }
-        cudaThreadSynchronize();
+        hipDeviceSynchronize();
 
         //m5_work_begin(0, 0);
 
         // Launch GPU threads
         // Kernel launch
-        cudaStatus = call_RANSAC_kernel_block(p.n_gpu_blocks, p.n_gpu_threads, model_param_local, flow_vector_array, 
+        hipError_t cudaStatus = call_RANSAC_kernel_block(p.n_gpu_blocks, p.n_gpu_threads, model_param_local, flow_vector_array, 
             n_flow_vectors, random_numbers, p.max_iter, p.error_threshold, p.convergence_threshold, 
             (int*)g_out_id, model_candidate, outliers_candidate, (int*)launch_gpu, sizeof(int));
-        CUDA_ERR();
+        if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };;
 
         // Launch CPU threads
         std::thread main_thread(run_cpu_threads, model_param_local, flow_vector_array, n_flow_vectors, random_numbers,
             p.max_iter, p.error_threshold, p.convergence_threshold, g_out_id, p.n_threads, launch_gpu);
 
-        cudaThreadSynchronize();
+        hipDeviceSynchronize();
 
         main_thread.join();
 
