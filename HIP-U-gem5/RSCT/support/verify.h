@@ -40,11 +40,11 @@
 
 inline int compare_output(int count1, int count2, int outliers1, int outliers2) {
     if(count1 != count2) {
-        printf("Test failed\n");
+        printf("Test failed, count1 = %d | count2 = %d\n", count1, count2);
         exit(EXIT_FAILURE);
     }
     if(outliers1 != outliers2) {
-        printf("Test failed\n");
+        printf("Test failed, ol1=%d, ol2=%d\n", outliers1, outliers2);
         exit(EXIT_FAILURE);
     }
     return 0;

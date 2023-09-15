@@ -14,35 +14,31 @@ Run from the directory containing gem5 and gem5-resources:
 
 ## Errata
 ```
- 1. BFS:                         src/gpu-compute/compute\_unit.cc:565: panic: panic condition (numWfs * vregDemandPerWI) > (numVectorALUs * numVecRegsPerSimd) occurred: WG with 1 WFs and 29285 VGPRs per WI can not be allocated to CU that has 8192 VGPRs
-
-                                 panic condition (numWfs * sregDemandPerWI) > numScalarRegsPerSimd occurred: WG with 1 WFs and 26656 SGPRs per WI can not be scheduled to CU with 2048 SGPRs
-
-                                 std::bad_alloc -- memory exhaustion mid-program run (different from docker memory exhaustion)
+ 1. BFS:                         gem5.opt: src/mem/ruby/system/GPUCoalescer.cc:607: void gem5::ruby::GPUCoalescer::hitCallback(gem5::ruby::CoalescedRequest*, gem5::ruby::MachineType, gem5::ruby::DataBlock&, bool, gem5::Cycles, gem5::Cycles, gem5::Cycles, bool): Assertion `data.numAtomicLogEntries() == 0' failed.
 
  2. BS:     Works (try CUDA_8)
 
- 3. CEDD:   Works                >24 hrs; no new misses from CPU/GPU; both CPU and GPU threads have been launched; verified!
+ 3. CEDD:   Works
 
-    CEDT:                        >24 hrs; failed due to server mem exhaustion?; Retry!
+    CEDT:                        Stuck (no GPU progress, unterminated)
 
  4. HSTI:   Works
 
-    HSTO:                        >12 hrs; unterminated
+    HSTO:                        Stuck (no GPU progress, unterminated)
 
- 5. PAD:    Works (try CUDA_8)   cannot allocate enough memory (unconvinced)A
+ 5. PAD:    Works (try CUDA_8)
 
  6. RSCD:                        
 
-    RSCT:
+    RSCT:   Test failed
 
- 7. SC:                          Unrolling fails; cannot allocate memory (possibly due to server memory exhaustion?)
+ 7. SC:                          
                                  
  8. SSSP:                        Stuck (no GPU progress, unterminated)
 
  9. TQ:     Works
 
-    TQH:                         >12 hrs; unterminated
+    TQH:                         Stuck (no GPU progress, unterminated)
 
-10. TRNS:                        std::bad_alloc -- src/central_freelist.cc:333] tcmalloc: allocation failed 16384 -- server memory issue. Stuck (no GPU progress, unterminated)
-``
+10. TRNS:                        Stuck (no GPU progress, unterminated)
+```

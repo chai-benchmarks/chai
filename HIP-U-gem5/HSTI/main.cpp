@@ -58,6 +58,7 @@ struct Params {
     float alpha;
     int   in_size;
     int   n_bins;
+    const char *file_name;
 
     Params(int argc, char **argv) {
         device        = 0;
@@ -69,6 +70,7 @@ struct Params {
         alpha         = 0.2;
         in_size       = 1536 * 1024;
         n_bins        = 256;
+        file_name     = "input/image_VanHateren.iml";
         int opt;
         while((opt = getopt(argc, argv, "hd:i:g:t:w:r:a:n:b:")) >= 0) {
             switch(opt) {
@@ -85,6 +87,7 @@ struct Params {
             case 'a': alpha         = atof(optarg); break;
             case 'n': in_size       = atoi(optarg); break;
             case 'b': n_bins        = atoi(optarg); break;
+            case 'f': file_name        = optarg; break;
             default:
                 fprintf(stderr, "\nUnrecognized option!\n");
                 usage();
@@ -117,6 +120,7 @@ struct Params {
                 "\n    -t <T>    # of host threads (default=4)"
                 "\n    -w <W>    # of untimed warmup iterations (default=5)"
                 "\n    -r <R>    # of timed repetition iterations (default=50)"
+                "\n    -f <F>    # input file name"
                 "\n"
                 "\nData-partitioning-specific options:"
                 "\n    -a <A>    fraction of input elements to process on host (default=0.2)"
@@ -137,7 +141,7 @@ void read_input(unsigned int *input, const Params &p) {
 
     // Open input file
     unsigned short temp;
-    sprintf(dctFileName, "./gem5-resources/src/gpu/chai/HIP-U-gem5/HSTI/input/image_VanHateren.iml");
+    sprintf(dctFileName, p.file_name);
     if((File = fopen(dctFileName, "rb")) != NULL) {
         for(int y = 0; y < p.in_size; y++) {
             int fr   = fread(&temp, sizeof(unsigned short), 1, File);
