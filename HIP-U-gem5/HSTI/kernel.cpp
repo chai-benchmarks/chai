@@ -42,13 +42,20 @@
 
 // CPU threads--------------------------------------------------------------------------------------
 void run_cpu_threads(std::atomic_uint *histo, unsigned int *data, int size, int bins, int n_threads, int chunk, int n_tasks, float alpha
+#ifdef CUDA_8_0
     , std::atomic_int *worklist
+#endif
     ) {
     std::vector<std::thread> cpu_threads;
     for(int k = 0; k < n_threads; k++) {
         cpu_threads.push_back(std::thread([=]() {
 
+#ifdef CUDA_8_0
             Partitioner p = partitioner_create(n_tasks, alpha, k, n_threads, worklist);
+#else
+            Partitioner p = partitioner_create(n_tasks, alpha, k, n_threads);
+#endif
+
             unsigned int Hs[bins];
             // Local histogram initialization
             for(int i = 0; i < bins; i++) {

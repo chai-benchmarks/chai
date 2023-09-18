@@ -38,7 +38,7 @@
 
 #include "support/common.h"
 
-// CUDA kernel ------------------------------------------------------------------------------------------
+// HIP kernel ------------------------------------------------------------------------------------------
 __global__ void SSSP_gpu(Node *graph_nodes_av, Edge *graph_edges_av, int *cost,
     int *color, int *q1, int *q2, int *n_t,
     int *head, int *tail, int *threads_end,

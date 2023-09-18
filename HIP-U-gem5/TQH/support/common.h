@@ -36,6 +36,8 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+#define CUDA_8_0
+
 #define SIGNAL_STOP_KERNEL 0xFEDCFEDC
 #define SIGNAL_WORK_KERNEL 1
 #define SIGNAL_NOTWORK_KERNEL 2

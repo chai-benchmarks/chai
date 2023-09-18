@@ -109,7 +109,7 @@ struct Params {
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
-                "\n    -d <D>    CUDA device ID (default=0)"
+                "\n    -d <D>    HIP device ID (default=0)"
                 "\n    -i <I>    # of device threads per block (default=64)"
                 "\n    -g <G>    # of device blocks (default=320)"
                 "\n    -t <T>    # of host threads (default=1)"
@@ -169,6 +169,7 @@ void read_input(int *pattern, task_t *task_pool, const Params &p) {
 int main(int argc, char **argv) {
 
     const Params p(argc, argv);
+    hipError_t  hipStatus;
 
     // Allocate
     int *   pattern = (int *)malloc(p.pool_size * sizeof(int));
@@ -222,9 +223,9 @@ int main(int argc, char **argv) {
             p.pool_size, p.n_gpu_blocks);
 
         // Kernel launch
-        hipError_t cudaStatus = call_TaskQueue_gpu(p.n_gpu_blocks, p.n_gpu_threads, task_queues, (int *)n_tasks_in_queue, 
+        hipStatus = call_TaskQueue_gpu(p.n_gpu_blocks, p.n_gpu_threads, task_queues, (int *)n_tasks_in_queue, 
             (int *)n_written_tasks, (int *)n_consumed_tasks, data, p.queue_size, p.iterations, sizeof(int) + sizeof(task_t));
-        if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };;
+        if(hipStatus != hipSuccess) { fprintf(stderr, "HIP error: %s\n at %s, %d\n", hipGetErrorString(hipStatus), __FILE__, __LINE__); exit(-1); };;
 
         hipDeviceSynchronize();
         main_thread.join();

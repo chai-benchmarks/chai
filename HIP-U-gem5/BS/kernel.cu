@@ -65,7 +65,7 @@ __device__ T BezierBlendGPU(int k, T mu, int n) {
     return (blend);
 }
 
-// CUDA kernel --------------------------------------------------------------
+// HIP kernel --------------------------------------------------------------
 __global__ void Bezier_surface(int n_tasks, float alpha, int in_size_i, int in_size_j, int out_size_i,
     int out_size_j, XYZ *in, XYZ *outp
 #ifdef CUDA_8_0

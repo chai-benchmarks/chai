@@ -39,7 +39,7 @@
 #include "support/common.h"
 #include "support/partitioner.h"
 
-// CUDA baseline kernel ------------------------------------------------------------------------------------------
+// HIP baseline kernel ------------------------------------------------------------------------------------------
 // Generate model on GPU side
 __device__ int gen_model_paramGPU(int x1, int y1, int vx1, int vy1, int x2, int y2, int vx2, int vy2, float *model_param) {
     float temp;
@@ -70,14 +70,22 @@ __global__ void RANSAC_kernel_block(int flowvector_count, int max_iter, int erro
     int n_tasks, float alpha, float *model_param_local, flowvector *flowvectors,
     int *random_numbers, int *model_candidate, int *outliers_candidate, 
     int *g_out_id
+#ifdef CUDA_8_0
     , int *worklist
+#endif
     ) {
 
     HIP_DYNAMIC_SHARED( int, l_mem)
     int* outlier_block_count = l_mem;
+#ifdef CUDA_8_0
     int* l_tmp = &outlier_block_count[1];
+#endif
     
+#ifdef CUDA_8_0
     Partitioner p = partitioner_create(n_tasks, alpha, worklist, l_tmp);
+#else
+    Partitioner p = partitioner_create(n_tasks, alpha);
+#endif
     
     const int tx         = threadIdx.x;
     const int bx         = blockIdx.x;
@@ -135,16 +143,28 @@ __global__ void RANSAC_kernel_block(int flowvector_count, int max_iter, int erro
                 outlier_local_count++;
             }
         }
+#ifdef CUDA_8_0
         atomicAdd(&outlier_block_count[0], outlier_local_count); //atomicAdd_system(&outlier_block_count[0], outlier_local_count);
+#else
+        atomicAdd(&outlier_block_count[0], outlier_local_count);
+#endif
 
         __syncthreads();
         if(tx == 0) {
             // Compare to threshold
+#ifdef CUDA_8_0
             if(atomicAdd(&outlier_block_count[0], 0) < flowvector_count * convergence_threshold) { //atomicAdd_system(&outlier_block_count[0], 0)
                 int index                 = atomicAdd(g_out_id, 1); //atomicAdd_system(g_out_id, 1);
                 outliers_candidate[index] = atomicAdd(&outlier_block_count[0], 0); //atomicAdd_system(&outlier_block_count[0], 0);
                 model_candidate[index] = iter;
             }
+#else
+            if(outlier_block_count[0] < flowvector_count * convergence_threshold) {
+                int index                 = atomicAdd(g_out_id, 1);
+                outliers_candidate[index] = outlier_block_count[0];
+                model_candidate[index] = iter;
+            }
+#endif
         }
     }
 }
@@ -153,7 +173,9 @@ hipError_t call_RANSAC_kernel_block(int blocks, int threads, int flowvector_coun
     float convergence_threshold, int n_tasks, float alpha, float *model_param_local, flowvector *flowvectors,
     int *random_numbers, int *model_candidate, int *outliers_candidate, 
     int *g_out_id, int l_mem_size
+#ifdef CUDA_8_0
     , int *worklist
+#endif
     ){
     dim3 dimGrid(blocks);
     dim3 dimBlock(threads);
@@ -161,7 +183,9 @@ hipError_t call_RANSAC_kernel_block(int blocks, int threads, int flowvector_coun
         convergence_threshold, n_tasks, alpha, model_param_local, flowvectors,
         random_numbers, model_candidate, outliers_candidate, 
         g_out_id
+#ifdef CUDA_8_0
         , worklist
+#endif
         );
     hipError_t err = hipGetLastError();
     return err;

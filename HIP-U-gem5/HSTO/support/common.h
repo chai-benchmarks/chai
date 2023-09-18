@@ -36,6 +36,7 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+#define CUDA_8_0
 
 #define PRINT 0
 
@@ -55,11 +56,5 @@
 #define ERR_7(v1,v2,v3,v4,v5,v6,v7) ERR_6(v1,v2,v3,v4,v5,v6) ERR_1(v7)
 #define GET_ERR_MACRO(_1,_2,_3,_4,_5,_6,_7,NAME,...) NAME
 #define ALLOC_ERR(...) GET_ERR_MACRO(__VA_ARGS__,ERR_7,ERR_6,ERR_5,ERR_4,ERR_3,ERR_2,ERR_1)(__VA_ARGS__)
-
-#define CUDA_ERR()                                                                                                     \
-    if(cudaStatus != cudaSuccess) {                                                                                    \
-        fprintf(stderr, "CUDA error: %s\n at %s, %d\n", cudaGetErrorString(cudaStatus), __FILE__, __LINE__);           \
-        exit(-1);                                                                                                      \
-    }
 
 #endif

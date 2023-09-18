@@ -38,7 +38,7 @@
 
 #include "support/common.h"
 
-// CUDA kernel ------------------------------------------------------------------------------------------
+// HIP kernel ------------------------------------------------------------------------------------------
 __global__ void TaskQueue_gpu(task_t *queues, int *n_task_in_queue, int *n_written_tasks, int *n_consumed_tasks, 
     int *data, int gpuQueueSize, int iterations) {
 

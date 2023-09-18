@@ -1,5 +1,4 @@
 #include "hip/hip_runtime.h"
-#include "hip/hip_runtime.h"
 /*
  * Copyright (c) 2016 University of Cordoba and University of Illinois
  * All rights reserved.
@@ -40,16 +39,24 @@
 #include "support/common.h"
 #include "support/partitioner.h"
 
-// CUDA kernel ------------------------------------------------------------------------------------------
+// HIP kernel ------------------------------------------------------------------------------------------
 __global__ void Padding_kernel(int n, int m, int pad, int n_tasks, float alpha, T *matrix_out, T *matrix,
     int *flags
+#ifdef CUDA_8_0
     , int *worklist
+#endif
     ) {
 
+#ifdef CUDA_8_0
     HIP_DYNAMIC_SHARED( int, l_mem)
     int* l_tmp = l_mem;
+#endif
 
+#ifdef CUDA_8_0
     Partitioner p = partitioner_create(n_tasks, alpha, worklist, l_tmp);
+#else
+    Partitioner p = partitioner_create(n_tasks, alpha);
+#endif
 
     const int matrix_size = m * (n + pad);
     const int matrix_size_align =
@@ -80,9 +87,15 @@ __global__ void Padding_kernel(int n, int m, int pad, int n_tasks, float alpha, 
 
         // Set global synch
         if(threadIdx.x == 0) {
+#ifdef CUDA_8_0
             while(atomicAdd(&flags[my_s], 0) == 0) { //atomicAdd_system(&flags[my_s], 0)
             }
             atomicAdd(&flags[my_s + 1], 1); //atomicAdd_system(&flags[my_s + 1], 1);
+#else
+            while(atomicAdd(&flags[my_s], 0) == 0) {
+            }
+            atomicAdd(&flags[my_s + 1], 1);
+#endif
         }
         __syncthreads();
 
@@ -99,15 +112,21 @@ __global__ void Padding_kernel(int n, int m, int pad, int n_tasks, float alpha, 
 
 hipError_t call_Padding_kernel(int blocks, int threads, int n, int m, int pad, int n_tasks, float alpha, 
     T *matrix_out, T *matrix, int *flags
+#ifdef CUDA_8_0
     , int l_mem_size, int *worklist
+#endif
     ){
     dim3 dimGrid(blocks);
     dim3 dimBlock(threads);
     Padding_kernel<<<dimGrid, dimBlock
+#ifdef CUDA_8_0
         , l_mem_size
+#endif
         >>>(n, m, pad, n_tasks, alpha, 
         matrix_out, matrix, flags
+#ifdef CUDA_8_0
         , worklist
+#endif
         );
     hipError_t err = hipGetLastError();
     return err;

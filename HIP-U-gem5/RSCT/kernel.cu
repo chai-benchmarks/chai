@@ -38,7 +38,7 @@
 
 #include "support/common.h"
 
-// CUDA heterogeneous kernel ------------------------------------------------------------------------------------------
+// HIP heterogeneous kernel ------------------------------------------------------------------------------------------
 __global__ void RANSAC_kernel_block(float *model_param_local, flowvector *flowvectors,
     int flowvector_count, int *random_numbers, int max_iter, int error_threshold, float convergence_threshold,
     int *g_out_id, int *model_candidate, int *outliers_candidate, int *launch_gpu) {

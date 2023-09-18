@@ -36,6 +36,7 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+#define CUDA_8_0
 
 #define PRINT 0
 #define PRINT_ALL 0

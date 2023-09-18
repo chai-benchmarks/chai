@@ -103,7 +103,7 @@ struct Params {
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
-                "\n    -d <D>    CUDA device ID (default=0)"
+                "\n    -d <D>    HIP device ID (default=0)"
                 "\n    -i <I>    # of device threads per block (default=256)"
                 "\n    -g <G>    # of device blocks (default=8)"
                 "\n              WARNING: This benchmark uses persistent threads. Setting -g too large may deadlock."
@@ -168,6 +168,7 @@ void read_input(int &source, Node *&h_nodes, Edge *&h_edges, const Params &p) {
 int main(int argc, char **argv) {
 
     const Params p(argc, argv);
+    hipError_t  hipStatus;
 
     // Allocate
     int n_nodes, n_edges;
@@ -259,11 +260,11 @@ int main(int argc, char **argv) {
 
         // Kernel launch
         if(GPU_EXEC == 1) {
-            hipError_t cudaStatus = call_SSSP_gpu(p.n_gpu_blocks, p.n_gpu_threads, nodes, edges, (int*)cost,
+            hipStatus = call_SSSP_gpu(p.n_gpu_blocks, p.n_gpu_threads, nodes, edges, (int*)cost,
                 (int*)color, q1, q2, num_t,
                 (int*)head, (int*)tail, (int*)threads_end, (int*)threads_run,
                 overflow, (int*)gray_shade, p.switching_limit, CPU_EXEC, sizeof(int) * (W_QUEUE_SIZE + 3));
-            if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };;
+            if(hipStatus != hipSuccess) { fprintf(stderr, "HIP error: %s\n at %s, %d\n", hipGetErrorString(hipStatus), __FILE__, __LINE__); exit(-1); };;
         }
 
         hipDeviceSynchronize();

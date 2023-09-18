@@ -43,7 +43,9 @@
 // CPU threads--------------------------------------------------------------------------------------
 void run_cpu_threads(T *output, T *input, std::atomic_int *flags, int size, int value, int n_threads, int ldim,
     int n_tasks, float alpha
+#ifdef CUDA_8_0
     , std::atomic_int *worklist
+#endif
     ) {
 
     const int                REGS_CPU = REGS * ldim;
@@ -51,7 +53,11 @@ void run_cpu_threads(T *output, T *input, std::atomic_int *flags, int size, int 
     for(int i = 0; i < n_threads; i++) {
         cpu_threads.push_back(std::thread([=]() {
 
+#ifdef CUDA_8_0
             Partitioner p = partitioner_create(n_tasks, alpha, i, n_threads, worklist);
+#else
+            Partitioner p = partitioner_create(n_tasks, alpha, i, n_threads);
+#endif
 
             for(int my_s = cpu_first(&p); cpu_more(&p); my_s = cpu_next(&p)) {
 

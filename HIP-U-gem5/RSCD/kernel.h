@@ -40,12 +40,16 @@
 void run_cpu_threads(int *model_candidate, int *outliers_candidate, float *model_param_local, flowvector *flowvectors,
     int flowvector_count, int *random_numbers, int max_iter, int error_threshold, float convergence_threshold,
     std::atomic_int *g_out_id, int n_threads, int n_tasks, float alpha
+#ifdef CUDA_8_0
     , std::atomic_int *worklist
+#endif
     );
 
 hipError_t call_RANSAC_kernel_block(int blocks, int threads, int flowvector_count, int max_iter, int error_threshold, 
     float convergence_threshold, int n_tasks, float alpha, float *model_param_local, flowvector *flowvectors,
     int *random_numbers, int *model_candidate, int *outliers_candidate, 
     int *g_out_id, int l_mem_size
+#ifdef CUDA_8_0
     , int *worklist
+#endif
 		);

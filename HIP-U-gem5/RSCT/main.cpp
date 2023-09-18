@@ -106,7 +106,7 @@ struct Params {
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
-                "\n    -d <D>    CUDA device ID (default=0)"
+                "\n    -d <D>    HIP device ID (default=0)"
                 "\n    -i <I>    # of device threads per block (default=256)"
                 "\n    -g <G>    # of device blocks (default=64)"
                 "\n    -t <T>    # of host threads (default=1)"
@@ -176,6 +176,7 @@ void read_input(flowvector *v, int *r, const Params &p) {
 int main(int argc, char **argv) {
 
     const Params p(argc, argv);
+    hipError_t  hipStatus;
 
     // Allocate
     int         n_flow_vectors = read_input_size(p);
@@ -211,10 +212,10 @@ int main(int argc, char **argv) {
 
         // Launch GPU threads
         // Kernel launch
-        hipError_t cudaStatus = call_RANSAC_kernel_block(p.n_gpu_blocks, p.n_gpu_threads, model_param_local, flow_vector_array, 
+        hipStatus = call_RANSAC_kernel_block(p.n_gpu_blocks, p.n_gpu_threads, model_param_local, flow_vector_array, 
             n_flow_vectors, random_numbers, p.max_iter, p.error_threshold, p.convergence_threshold, 
             (int*)g_out_id, model_candidate, outliers_candidate, (int*)launch_gpu, sizeof(int));
-        if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };;
+        if(hipStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(hipStatus), __FILE__, __LINE__); exit(-1); };;
 
         // Launch CPU threads
         std::thread main_thread(run_cpu_threads, model_param_local, flow_vector_array, n_flow_vectors, random_numbers,

@@ -42,6 +42,10 @@
 #include <thread>
 #include <assert.h>
 
+#ifdef ENABLE_PARSEC_HOOKS
+#include <hooks.h>
+#endif
+
 /*extern "C" {
 void m5_work_begin(int workid, uint64_t threadid);
 void m5_work_end(uint64_t workid, uint64_t threadid);
@@ -62,8 +66,8 @@ struct Params {
 
     Params(int argc, char **argv) {
         device          = 0;
-        n_gpu_threads   = 64;
-        n_gpu_blocks    = 32;
+        n_gpu_threads   = 256;
+        n_gpu_blocks    = 8;
         n_threads       = 2;
 				n_warmup        = 0;
         n_reps          = 1;
@@ -103,7 +107,7 @@ struct Params {
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
-                "\n    -d <D>    CUDA device ID (default=0)"
+                "\n    -d <D>    HIP device ID (default=0)"
                 "\n    -i <I>    # of device threads per block (default=256)"
                 "\n    -g <G>    # of device blocks (default=8)"
                 "\n              WARNING: This benchmark uses persistent threads. Setting -g too large may deadlock."
@@ -170,8 +174,11 @@ void read_input(int &source, Node *&h_nodes, Edge *&h_edges, const Params &p) {
 // Main ------------------------------------------------------------------------------------------
 int main(int argc, char **argv) {
 
+#ifdef ENABLE_PARSEC_HOOKS
+  __parsec_bench_begin (__splash2_barnes);
+#endif
     const Params p(argc, argv);
-    //hipError_t  cudaStatus;
+    hipError_t  hipStatus;
     // Allocate
     int n_nodes, n_edges;
     read_input_size(n_nodes, n_edges, p);
@@ -257,20 +264,23 @@ int main(int argc, char **argv) {
 
         fprintf(stderr,"AM: Launching GPU threads\n" );
         // Kernel launch
+#ifdef ENABLE_PARSEC_HOOKS
+  __parsec_roi_begin();
+#endif
         if(GPU_EXEC == 1) {
-            hipError_t cudaStatus = call_BFS_gpu(p.n_gpu_blocks, p.n_gpu_threads, nodes, edges, (int*)cost,
+            hipStatus = call_BFS_gpu(p.n_gpu_blocks, p.n_gpu_threads, nodes, edges, (int*)cost,
                 (int*)color, q1, q2, num_t,
                 (int*)head, (int*)tail, (int*)threads_end, (int*)threads_run,
              		overflow, p.switching_limit, CPU_EXEC, sizeof(int) * (W_QUEUE_SIZE + 3));
-            //CUDA_ERR();
-            if(cudaStatus != hipSuccess) {
-                fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__);
-                exit(-1);
-            }
+            if(hipStatus != hipSuccess) { fprintf(stderr, "HIP error: %s\n at %s, %d\n", hipGetErrorString(hipStatus), __FILE__, __LINE__); exit(-1); };;
         }
         fprintf(stderr, "AM: System level barrier\n");
         hipDeviceSynchronize();
         fprintf(stderr, "AM: beyond the barrier\n");
+#ifdef ENABLE_PARSEC_HOOKS
+  __parsec_roi_end();
+#endif
+
         main_thread.join();
         fprintf(stderr, "AM: joined\n");
 
@@ -298,5 +308,9 @@ int main(int argc, char **argv) {
     free(overflow);
 
     printf("Test Passed\n");
+
+#ifdef ENABLE_PARSEC_HOOKS
+__parsec_bench_end();
+#endif
     return 0;
 }

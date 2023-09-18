@@ -46,7 +46,7 @@ inline int compare_output(unsigned char **all_out_frames, int image_size, const 
         sprintf(FileName, "%s%d.txt", file_name, i);
         FILE *out_file = fopen(FileName, "r");
         if(!out_file) {
-            printf("Error reading output file\n");
+            printf("Error Reading output file\n");
             return 1;
         }
 #if PRINT

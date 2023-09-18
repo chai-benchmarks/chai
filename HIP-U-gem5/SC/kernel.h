@@ -39,10 +39,14 @@
 
 void run_cpu_threads(T *output, T *input, std::atomic_int *flags, int size, int value, int n_threads, int ldim,
     int n_tasks, float alpha
+#ifdef CUDA_8_0
     , std::atomic_int *worklist
+#endif
     );
 
 hipError_t call_StreamCompaction_kernel(int blocks, int threads, int size, T value, int n_tasks, float alpha, 
     T *output, T *input, int *flags, int l_mem_size
+#ifdef CUDA_8_0
     , int *worklist
+#endif
 		);

@@ -37,9 +37,8 @@
 #define _CUDA_COMPILER_
 
 #include "support/common.h"
-#include "hip/hip_runtime.h"
 
-// CUDA kernel ------------------------------------------------------------------------------------------
+// HIP kernel ------------------------------------------------------------------------------------------
 __global__ void BFS_gpu(Node *graph_nodes_av, Edge *graph_edges_av, int *cost,
     int *color, int *q1, int *q2, int *n_t,
     int *head, int *tail, int *threads_end,

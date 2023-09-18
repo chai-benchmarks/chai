@@ -38,10 +38,14 @@
 #include "support/common.h"
 
 void run_cpu_threads(T *matrix_out, T *matrix, std::atomic_int *flags, int n, int m, int pad, int num_threads, int ldim, int n_tasks, float alpha
+#ifdef CUDA_8_0
     , std::atomic_int *worklist
+#endif
     );
 
 hipError_t call_Padding_kernel(int blocks, int threads, int n, int m, int pad, int n_tasks, float alpha, 
     T *matrix_out, T *matrix, int *flags
+#ifdef CUDA_8_0
     , int l_mem_size, int *worklist
+#endif
 		);

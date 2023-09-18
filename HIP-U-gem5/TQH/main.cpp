@@ -42,6 +42,10 @@
 #include <thread>
 #include <assert.h>
 
+#ifdef ENABLE_PARSEC_HOOKS
+#include <hooks.h>
+#endif
+
 /*extern "C" {
 void m5_work_begin(int workid, uint64_t threadid);
 void m5_work_end(uint64_t workid, uint64_t threadid);
@@ -112,7 +116,7 @@ struct Params {
                 "\n"
                 "\nGeneral options:"
                 "\n    -h        help"
-                "\n    -d <D>    CUDA device ID (default=0)"
+                "\n    -d <D>    HIP device ID (default=0)"
                 "\n    -i <I>    # of device threads per block (default=64)"
                 "\n    -g <G>    # of device blocks (default=320)"
                 "\n    -t <T>    # of host threads (default=1)"
@@ -164,7 +168,11 @@ void read_input(int *data, task_t *task_pool, const Params &p) {
 // Main ------------------------------------------------------------------------------------------
 int main(int argc, char **argv) {
 
+#ifdef ENABLE_PARSEC_HOOKS
+  __parsec_bench_begin (__splash2_barnes);
+#endif
     const Params p(argc, argv);
+    hipError_t  hipStatus;
 
     // Allocate
     int     frame_size = p.n * p.m;
@@ -221,16 +229,20 @@ int main(int argc, char **argv) {
         std::thread main_thread(run_cpu_threads, p.n_threads, task_queues, n_task_in_queue, n_written_tasks,
             n_consumed_tasks, task_pool, data_pool, p.queue_size, &offset, &last_queue, &num_tasks, p.queue_size, p.pool_size,
             p.n_gpu_blocks);
-
+#ifdef ENABLE_PARSEC_HOOKS
+  __parsec_roi_begin();
+#endif
         // Kernel launch
-        hipError_t cudaStatus = call_TQHistogram_gpu(p.n_gpu_blocks, p.n_gpu_threads, task_queues, (int*)n_task_in_queue, (int*)n_written_tasks, (int*)n_consumed_tasks,
+        hipStatus = call_TQHistogram_gpu(p.n_gpu_blocks, p.n_gpu_threads, task_queues, (int*)n_task_in_queue, (int*)n_written_tasks, (int*)n_consumed_tasks,
             (int*)histo, data_pool, p.queue_size, frame_size, p.n_bins, 
             sizeof(int) + sizeof(task_t) + p.n_bins * sizeof(int));
-        if(cudaStatus != hipSuccess) { fprintf(stderr, "CUDA error: %s\n at %s, %d\n", hipGetErrorString(cudaStatus), __FILE__, __LINE__); exit(-1); };;
+        if(hipStatus != hipSuccess) { fprintf(stderr, "HIP error: %s\n at %s, %d\n", hipGetErrorString(hipStatus), __FILE__, __LINE__); exit(-1); };;
 
         hipDeviceSynchronize();
         main_thread.join();
-
+#ifdef ENABLE_PARSEC_HOOKS
+  __parsec_roi_end();
+#endif
         //m5_work_end(0, 0);
     }
 
@@ -248,5 +260,9 @@ int main(int argc, char **argv) {
     free(task_pool_backup);
 
     printf("Test Passed\n");
+
+#ifdef ENABLE_PARSEC_HOOKS
+__parsec_bench_end();
+#endif
     return 0;
 }

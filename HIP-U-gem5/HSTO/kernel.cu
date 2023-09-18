@@ -38,7 +38,7 @@
 
 #include "support/common.h"
 
-// CUDA kernel ------------------------------------------------------------------------------------------
+// HIP kernel ------------------------------------------------------------------------------------------
 __global__ void Histogram_kernel(int size, int bins, int cpu_bins, unsigned int *data, unsigned int *histo) {
 
     HIP_DYNAMIC_SHARED( unsigned int, l_mem)

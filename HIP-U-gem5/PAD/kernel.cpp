@@ -42,7 +42,9 @@
 
 // CPU threads--------------------------------------------------------------------------------------
 void run_cpu_threads(T *matrix_out, T *matrix, std::atomic_int *flags, int n, int m, int pad, int n_threads, int ldim, int n_tasks, float alpha
+#ifdef CUDA_8_0
     , std::atomic_int *worklist
+#endif
     ) {
 
     const int                REGS_CPU = REGS * ldim;
@@ -51,7 +53,11 @@ void run_cpu_threads(T *matrix_out, T *matrix, std::atomic_int *flags, int n, in
     
         cpu_threads.push_back(std::thread([=]() {
 
+#ifdef CUDA_8_0
             Partitioner p = partitioner_create(n_tasks, alpha, i, n_threads, worklist);
+#else
+            Partitioner p = partitioner_create(n_tasks, alpha, i, n_threads);
+#endif
 
             const int matrix_size       = m * (n + pad);
             const int matrix_size_align = (matrix_size + ldim * REGS - 1) / (ldim * REGS) * (ldim * REGS);

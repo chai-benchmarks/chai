@@ -36,6 +36,8 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+#define CUDA_8_0
+
 #ifndef DOUBLE_PRECISION
 #define DOUBLE_PRECISION 1
 #endif

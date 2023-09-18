@@ -70,14 +70,20 @@ int gen_model_param(int x1, int y1, int vx1, int vy1, int x2, int y2, int vx2, i
 void run_cpu_threads(int *model_candidate, int *outliers_candidate, float *model_param_local, flowvector *flowvectors,
     int flowvector_count, int *random_numbers, int max_iter, int error_threshold, float convergence_threshold,
     std::atomic_int *g_out_id, int n_threads, int n_tasks, float alpha
+#ifdef CUDA_8_0
     , std::atomic_int *worklist
+#endif
     ) {
 
     std::vector<std::thread> cpu_threads;
     for(int k = 0; k < n_threads; k++) {
         cpu_threads.push_back(std::thread([=]() {
 
+#ifdef CUDA_8_0
             Partitioner p = partitioner_create(n_tasks, alpha, k, n_threads, worklist);
+#else
+            Partitioner p = partitioner_create(n_tasks, alpha, k, n_threads);
+#endif
 
             flowvector fv[2];
             float      vx_error, vy_error;

@@ -38,7 +38,7 @@
 
 #include "support/common.h"
 
-// CUDA kernel ------------------------------------------------------------------------------------------
+// HIP kernel ------------------------------------------------------------------------------------------
 __global__ void TQHistogram_gpu(task_t *queues, int *n_task_in_queue,
     int *n_written_tasks, int *n_consumed_tasks,
     int *histo, int *data, int gpuQueueSize, int frame_size, int n_bins) {
