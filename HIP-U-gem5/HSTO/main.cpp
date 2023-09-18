@@ -72,7 +72,7 @@ struct Params {
         n_bins        = 256;
         file_name     = "input/image_VanHateren.iml";
         int opt;
-        while((opt = getopt(argc, argv, "hd:i:g:t:w:r:a:n:b:")) >= 0) {
+        while((opt = getopt(argc, argv, "hd:i:g:t:w:r:a:n:b:f:")) >= 0) {
             switch(opt) {
             case 'h':
                 usage();
