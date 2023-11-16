@@ -70,7 +70,7 @@ struct Params {
 				n_warmup              = 0;
 				n_reps                = 1;
         alpha                 = 0.2;
-        file_name             = "gem5-resources/src/gpu/chai/HIP-U-gem5/RSCD/input/vectors.csv";
+        file_name             = "gem5-resources/src/gpu/chai/HIP-U-gem5/rscd/input/vectors.csv";
         max_iter              = 2000;
         error_threshold       = 3;
         convergence_threshold = 0.75;
