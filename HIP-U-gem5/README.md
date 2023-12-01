@@ -18,28 +18,27 @@ Data Paritioning:
 ```
 Both  BS     Works
 Main  CEDD   Works                (with develop) Doesn't terminate
-Main  HSTI   Works                (with develop) Doesn't terminate
+Main  HSTI   Works                (with develop) Doesn't terminate, invalid opcode with gfx902
 Dev   HSTO   Works                (with main)    Doesn't terminate
 Both  PAD    Works
 Dev   SC     Works                (with gfx801)
-Dev   RSCD   Verification failed  (same as RSCT)
-      TRNS                        src/mem/port.cc:209: panic: panic condition !ext occurred: There is no TracingExtension in the packet.
-                                  Random matrix size flexibility
+Dev   RSCD   Failed               (same as RSCT)
+Dev   TRNS   Works
 ```
 
 Fine-grained Task Partitioning:
 ```
-Both  RSCT   Verification failed 
-                                  The best fitting model computed by the verification code does not match the model identified by GPU+CPU
-                                    will need to contact CHAI folks for algorithm insight (or read the reference paper)
+Both  RSCT   Failed               The best fitting model computed by the verification code does not
+                                    match the model identified by GPU+CPU
 Both  TQ     Works 
-Main  TQH    Completes with reduced data, fails verification
-                                  (with develop) (same as SC)
+Main  TQH    Failed               Completes with reduced data, fails verification
+                                    (with develop) same as SC
 ```
 
 Coarse-grained Task Partitioning:
 ```
-      BFS                         https://github.com/farkhor/PaRMAT -- figure out how to format correctly
+      BFS                         https://github.com/farkhor/PaRMAT
+                                     Perhaps smaller graphs fit better?
 Dev   CEDT   Works                (with gfx902) unimplemented instruction -- v_add_u32_e32
       SSSP                        Futex syscall -- returns 0 and waits perpetually (Debug how?)
                                   (same as BFS)
