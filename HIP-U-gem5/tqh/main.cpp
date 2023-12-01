@@ -77,8 +77,8 @@ struct Params {
         file_name     = "gem5-resources/src/gpu/chai/HIP-U-gem5/tqh/input/basket/basket";
         pool_size     = 4;
         queue_size    = 320;
-        m             = 28;
-        n             = 35;
+        m             = 288;
+        n             = 352;
         n_bins        = 256;
         int opt;
         while((opt = getopt(argc, argv, "hd:i:g:t:w:r:f:s:q:m:n:b:")) >= 0) {
